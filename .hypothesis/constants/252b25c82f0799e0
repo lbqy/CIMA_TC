@@ -1,0 +1,4 @@
+# file: /home/lbqy/CIMA_TC/CIMA_TC/Compiler/IR_tool/core/type_utils.py
+# hypothesis_version: 6.151.5
+
+[3.14, '0', '1', 'FALSE', 'False', 'Hello World!', 'T', 'TRUE', 'True', 'U', '[^a-zA-Z0-9_]', '_', '__main__', 'false', 'ignore', 'n', 'no', 'true', 'utf-8', 'y', 'yes']

@@ -1,0 +1,4 @@
+# file: /home/lbqy/miniconda3/envs/CIMA_TC/bin/pytest
+# hypothesis_version: 6.151.5
+
+['.exe', '__main__']
