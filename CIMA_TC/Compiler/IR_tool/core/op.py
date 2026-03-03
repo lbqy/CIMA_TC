@@ -9,8 +9,7 @@ utilities for enumerating registered operator IDs.
 
 from .reg import RegistryMixin, RegistryEntry   # Assume these are imported from the current registry module
 from .jsonable import Jsonable
-from .type_utils import to_string_tokens
-
+from .type_utils import to_string_tokens, ValidationError
 
 class BaseOp(Jsonable, RegistryMixin, RegistryEntry):
     """
@@ -35,6 +34,7 @@ class BaseOp(Jsonable, RegistryMixin, RegistryEntry):
 
     __registry_key__ = "op_id"               # The class attribute that holds the operator ID.
     __registry_default__ = None               # No default key; must be provided explicitly.
+    __abstract__ = True
 
     # Metadata defaults – can be overridden in concrete subclasses.
     attrs = ()
@@ -77,7 +77,7 @@ class BaseOp(Jsonable, RegistryMixin, RegistryEntry):
             AssertionError: If `op_id` is empty or None.
         """
         if not self.op_id:
-            raise ValueError(f"invalid op_id={self.op_id}")
+            raise ValidationError(f"invalid op_id={self.op_id}")
 
     def get_attrs(self) -> dict:
         """
@@ -151,7 +151,6 @@ def enum_op_ids():
     for key, _ in BaseOp.all_registered():
         yield key
 
-
 class UnaryOp(BaseOp):
     """
     Base class for unary operators (operators that take exactly one input).
@@ -159,7 +158,7 @@ class UnaryOp(BaseOp):
     Sets `num_inputs = 1` by default. Subclasses should still define `op_id`.
     """
     num_inputs = 1
-
+    __abstract__ = True
 
 class BinaryOp(BaseOp):
     """
@@ -168,6 +167,7 @@ class BinaryOp(BaseOp):
     Sets `num_inputs = 2` by default. Subclasses should still define `op_id`.
     """
     num_inputs = 2
+    __abstract__ = True  
 
 # if __name__ == "__main__":
 #     # ------------------------------------------------------------

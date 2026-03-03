@@ -7,7 +7,7 @@ from .type_utils import (
     is_integer,
     is_integers,
     is_boolean,
-    to_int_tuple,
+    to_integer_tuple
 )
 from .ref import Ref, InvalidRefError
 
@@ -72,7 +72,7 @@ class DataDef(Jsonable):
         # -----------------------------
 
         if isinstance(ref, str):
-            ref = Ref.parse(ref)
+            ref = Ref.parse(ref)   
         elif ref is not None and not isinstance(ref, Ref):
             raise TypeError("ref must be None, str, or Ref")
 
@@ -95,7 +95,7 @@ class DataDef(Jsonable):
         # Tuple attributes
         # -----------------------------
 
-        dims_tuple = to_int_tuple(dims, keep_scalar=True)
+        dims_tuple = to_integer_tuple(dims, keep_scalar=True)
         self.set_attr(
             "dims",
             dims_tuple,
@@ -104,7 +104,7 @@ class DataDef(Jsonable):
             min_dim=1,
         )
 
-        shape_tuple = to_int_tuple(shape, keep_scalar=True)
+        shape_tuple = to_integer_tuple(shape, keep_scalar=True)
         self.set_attr(
             "shape",
             shape_tuple,

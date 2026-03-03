@@ -27,7 +27,7 @@ import threading
 import time as time_module
 from collections.abc import Iterable as ABCIterable
 import hashlib
-from .type_utils import is_scalar
+from .type_utils import is_scalar, ValidationError
 try:
     import yaml
     YAML_AVAILABLE = True
@@ -395,6 +395,10 @@ class Jsonable:
 
     _lock = threading.RLock()
 
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
     def to_json_obj(
         self,
         *,
@@ -421,6 +425,26 @@ class Jsonable:
         if isinstance(data, dict):
             data.update(overrides)
         return self.__class__.from_json_obj(data)
+
+    def set_attr(
+        self, name: str, 
+        value: Any, 
+        validator: Optional[Callable[[Any], bool]] = None, 
+        *,
+        not_none: bool = False,
+        **validator_kwargs
+    ) -> None:
+        if value is None:
+            if not_none:
+                raise ValidationError(f"{name} cannot be None")
+            setattr(self, name, None)
+            return
+
+        if validator:
+            if not validator(value, **validator_kwargs):
+                raise ValidationError(f"Invalid value for {name}: {value}")
+
+        setattr(self, name, value)
 
 
 # ----------------------------------------------------------------------
@@ -532,117 +556,117 @@ def _serialize_to_file(
     else:
         file.write(_serialize_to_string(obj, config))
 
-if __name__ == "__main__":
-    from enum import Enum
-    from datetime import date
+# if __name__ == "__main__":
+#     from enum import Enum
+#     from datetime import date
 
-    # ------------------------------------------------------------
-    # Example domain models
-    # ------------------------------------------------------------
+#     # ------------------------------------------------------------
+#     # Example domain models
+#     # ------------------------------------------------------------
 
-    class Role(Enum):
-        ENGINEER = "engineer"
-        MANAGER = "manager"
-        DESIGNER = "designer"
+#     class Role(Enum):
+#         ENGINEER = "engineer"
+#         MANAGER = "manager"
+#         DESIGNER = "designer"
 
-    class Address(Jsonable):
-        def __init__(self, city: str, country: str, zipcode: str):
-            self.city = city
-            self.country = country
-            self.zipcode = zipcode
+#     class Address(Jsonable):
+#         def __init__(self, city: str, country: str, zipcode: str):
+#             self.city = city
+#             self.country = country
+#             self.zipcode = zipcode
 
-    class Person(Jsonable):
-        def __init__(
-            self,
-            name: str,
-            age: int,
-            role: Role,
-            address: Address,
-        ):
-            self.name = name
-            self.age = age
-            self.role = role
-            self.address = address
+#     class Person(Jsonable):
+#         def __init__(
+#             self,
+#             name: str,
+#             age: int,
+#             role: Role,
+#             address: Address,
+#         ):
+#             self.name = name
+#             self.age = age
+#             self.role = role
+#             self.address = address
 
-            # Private field to test filter policy
-            self._internal_id = f"person:{name.lower()}"
+#             # Private field to test filter policy
+#             self._internal_id = f"person:{name.lower()}"
 
-    class Company(Jsonable):
-        def __init__(
-            self,
-            name: str,
-            founded: date,
-            employees: list[Person],
-            metadata: dict[str, Any],
-        ):
-            self.name = name
-            self.founded = founded
-            self.employees = employees
-            self.metadata = metadata
+#     class Company(Jsonable):
+#         def __init__(
+#             self,
+#             name: str,
+#             founded: date,
+#             employees: list[Person],
+#             metadata: dict[str, Any],
+#         ):
+#             self.name = name
+#             self.founded = founded
+#             self.employees = employees
+#             self.metadata = metadata
 
-    # ------------------------------------------------------------
-    # Build example objects
-    # ------------------------------------------------------------
+#     # ------------------------------------------------------------
+#     # Build example objects
+#     # ------------------------------------------------------------
 
-    address_1 = Address("Tokyo", "Japan", "100-0001")
-    address_2 = Address("Berlin", "Germany", "10115")
+#     address_1 = Address("Tokyo", "Japan", "100-0001")
+#     address_2 = Address("Berlin", "Germany", "10115")
 
-    alice = Person(
-        name="Alice",
-        age=32,
-        role=Role.ENGINEER,
-        address=address_1,
-    )
+#     alice = Person(
+#         name="Alice",
+#         age=32,
+#         role=Role.ENGINEER,
+#         address=address_1,
+#     )
 
-    bob = Person(
-        name="Bob",
-        age=45,
-        role=Role.MANAGER,
-        address=address_2,
-    )
+#     bob = Person(
+#         name="Bob",
+#         age=45,
+#         role=Role.MANAGER,
+#         address=address_2,
+#     )
 
-    company = Company(
-        name="ExampleTech",
-        founded=date(2015, 6, 1),
-        employees=[alice, bob],
-        metadata={
-            "public": True,
-            "employee_count": 2,
-            "offices": ["Tokyo", "Berlin"],
-        },
-    )
+#     company = Company(
+#         name="ExampleTech",
+#         founded=date(2015, 6, 1),
+#         employees=[alice, bob],
+#         metadata={
+#             "public": True,
+#             "employee_count": 2,
+#             "offices": ["Tokyo", "Berlin"],
+#         },
+#     )
 
-    # ------------------------------------------------------------
-    # Serialization configuration
-    # ------------------------------------------------------------
+#     # ------------------------------------------------------------
+#     # Serialization configuration
+#     # ------------------------------------------------------------
 
-    config = SerializationConfig(
-        filter_policy=FilterPolicy.EXCLUDE_PRIVATE,
-        exclude_none=True,
-        sort_keys=True,
-        indent=2,
-    )
+#     config = SerializationConfig(
+#         filter_policy=FilterPolicy.EXCLUDE_PRIVATE,
+#         exclude_none=True,
+#         sort_keys=True,
+#         indent=2,
+#     )
 
-    # ------------------------------------------------------------
-    # Serialize to JSON string
-    # ------------------------------------------------------------
+#     # ------------------------------------------------------------
+#     # Serialize to JSON string
+#     # ------------------------------------------------------------
 
-    json_text = dump_json(company, config=config)
-    print("=== Serialized JSON ===")
-    print(json_text)
+#     json_text = dump_json(company, config=config)
+#     print("=== Serialized JSON ===")
+#     print(json_text)
 
-    # ------------------------------------------------------------
-    # Deserialize back to Python object (raw dict)
-    # ------------------------------------------------------------
+#     # ------------------------------------------------------------
+#     # Deserialize back to Python object (raw dict)
+#     # ------------------------------------------------------------
 
-    loaded_data = load_json(json_text)
-    print("\n=== Loaded Data (dict) ===")
-    print(loaded_data)
+#     loaded_data = load_json(json_text)
+#     print("\n=== Loaded Data (dict) ===")
+#     print(loaded_data)
 
-    # ------------------------------------------------------------
-    # Clone example
-    # ------------------------------------------------------------
+#     # ------------------------------------------------------------
+#     # Clone example
+#     # ------------------------------------------------------------
 
-    cloned_alice = alice.clone(age=33)
-    print("\n=== Cloned Person ===")
-    print(dump_json(cloned_alice, config=config))
+#     cloned_alice = alice.clone(age=33)
+#     print("\n=== Cloned Person ===")
+#     print(dump_json(cloned_alice, config=config))

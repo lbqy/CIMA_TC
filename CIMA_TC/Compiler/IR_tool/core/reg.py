@@ -75,13 +75,14 @@ class RegistryMeta(ABCMeta):
         **kwargs: Any,
     ) -> None:
         """
-        Initialize a class and handle registration logic.
+        Metaclass responsible for automatic registration of subclasses.
 
-        Args:
-            name: Class name.
-            bases: Base classes.
-            namespace: Class attribute dictionary.
-            **kwargs: Additional class creation arguments.
+        Behavior:
+        - If a class defines `__registry_key__`, it becomes a root registry.
+        - Concrete subclasses that define the registry key attribute
+        are automatically registered.
+        - Classes marked with `__abstract__ = True` will NOT be registered.
+        - Supports multi-level inheritance safely.
         """
         super().__init__(name, bases, namespace, **kwargs)
 
@@ -93,18 +94,22 @@ class RegistryMeta(ABCMeta):
             cls._default_key: Optional[str] = namespace.get("__registry_default__")
             cls._registry: Dict[str, Type[RegistryEntry]] = {}
             return
-
+           
         # ----------------------------------------------------
         # 2. Concrete plugin class
         # ----------------------------------------------------
         # Identify direct parent registry
         parent_registry = None
-        for base in bases:
+        # for base in bases:
+        for base in cls.__mro__[1:]:
             if hasattr(base, "_registry") and hasattr(base, "_registry_key_attribute"):
                 parent_registry = base
                 break
 
         if parent_registry is None:
+            return
+
+        if namespace.get("__abstract__", False):
             return
 
         key_attr = parent_registry._registry_key_attribute

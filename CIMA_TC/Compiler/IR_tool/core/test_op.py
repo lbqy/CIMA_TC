@@ -23,7 +23,6 @@ from .op import (
     enum_op_ids,
 )
 
-
 # ============================================================
 # Test Fixtures: Define Concrete Operators
 # ============================================================
@@ -48,6 +47,8 @@ class Neg(UnaryOp):
     def execute(self, a):
         return -a
 
+# pytest -s
+print("registry:", BaseOp._registry)
 
 # ============================================================
 # Registry Root Behavior
@@ -63,11 +64,9 @@ def test_concrete_ops_registered():
     assert "sub" in BaseOp._registry
     assert "neg" in BaseOp._registry
 
-
 def test_abstract_classes_not_registered():
     assert "unaryop" not in BaseOp._registry
     assert "binaryop" not in BaseOp._registry
-
 
 # ============================================================
 # enum_op_ids
