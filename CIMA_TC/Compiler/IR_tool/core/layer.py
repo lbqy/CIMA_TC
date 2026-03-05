@@ -2,40 +2,42 @@
 Structured Computation Graph IR
 """
 
+from typing import (
+    Any, Dict, Iterator, Optional, Tuple, Type, Union, ClassVar, Callable
+)
 from .reg import RegistryMixin, RegistryEntry
 from .jsonable import Jsonable
 from .type_utils import to_typed_dict, is_integer, ValidationError
 from .datadef import DataDef
 from .ref import NameSegment, get_ref, require_ref
 from .ns import ns_push
-from .op import make_op
-
-
+from .op import make_op, BaseOp  
 # ============================================================
-# Core IR Node
+# Core IR Layer
 # ============================================================
 
-class IRNode(Jsonable, RegistryMixin, RegistryEntry):
+class IRLayer(Jsonable, RegistryMixin, RegistryEntry):
     """
-    Base IR node.
+    Base IR layer.
     """
 
-    __registry_key__ = "type"
-    __registry_default__ = "op"
+    __registry_key__: ClassVar[str] = "type"
+    __registry_default__: ClassVar[str] = "op"
 
-    inputs = None
-    outputs = None
-    weights = None
+    # 实例属性类型注解
+    inputs: Optional[Dict[str, DataDef]]
+    outputs: Optional[Dict[str, DataDef]]
+    weights: Optional[Dict[str, DataDef]]
 
     def __init__(
         self,
         *,
-        inputs=None,
-        outputs=None,
-        weights=None,
-        datadef=DataDef,
-        **kwargs
-    ):
+        inputs: Optional[Dict[str, Any]] = None,
+        outputs: Optional[Dict[str, Any]] = None,
+        weights: Optional[Dict[str, Any]] = None,
+        datadef: Type[DataDef] = DataDef,
+        **kwargs: Any
+    ) -> None:
         # allow Jsonable to consume extra kwargs
         super().__init__(**kwargs)
 
@@ -48,14 +50,14 @@ class IRNode(Jsonable, RegistryMixin, RegistryEntry):
     def has_subgraph(self) -> bool:
         return False
 
-    def iter_subnodes(self):
-        return ()
+    def iter_sublayers(self) -> Iterator[Tuple[str, "IRLayer"]]:
+        return iter(())
 
     # ========================================================
     # Unified Validation Entry
     # ========================================================
 
-    def validate(self):
+    def validate(self) -> None:
         """
         Full validation entry.
         """
@@ -75,24 +77,24 @@ class IRNode(Jsonable, RegistryMixin, RegistryEntry):
 
         # recursive validation
         if self.has_subgraph():
-            for _, node in self.iter_subnodes():
-                node.validate()
+            for _, layer in self.iter_sublayers():
+                layer.validate()
 
     # --------------------------------------------------------
 
-    def iter_inputs(self):
+    def iter_inputs(self) -> Iterator[Tuple[str, DataDef]]:
         if self.inputs:
             for name, dd in self.inputs.items():
                 with ns_push(f"inputs[{name!r}]"):
                     yield name, dd
 
-    def iter_outputs(self):
+    def iter_outputs(self) -> Iterator[Tuple[str, DataDef]]:
         if self.outputs:
             for name, dd in self.outputs.items():
                 with ns_push(f"outputs[{name!r}]"):
                     yield name, dd
 
-    def iter_weights(self):
+    def iter_weights(self) -> Iterator[Tuple[str, DataDef]]:
         if self.weights:
             for name, dd in self.weights.items():
                 with ns_push(f"weights[{name!r}]"):
@@ -100,119 +102,125 @@ class IRNode(Jsonable, RegistryMixin, RegistryEntry):
 
 
 # ============================================================
-# Operator Node
+# Operator Layer
 # ============================================================
 
-class OpNode(IRNode):
+class OpLayer(IRLayer):
 
-    type = "op"
-    op = None
+    type: ClassVar[str] = "op"
+    op: Optional[BaseOp] = None
 
-    def __init__(self, *, op, **kwargs):
+    def __init__(self, *, op: str, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.set_attr("op", make_op(op), not_none=True)
 
-    def validate(self):
+    def validate(self) -> None:
         super().validate()
 
         # must have at least one input
-        n = len(self.inputs or {})
-        if not is_integer(n, min_val=1):
+        n = len(self.inputs or ())
+
+        if n != self.op.num_inputs:
             raise ValidationError(f"Invalid number of inputs: {n}")
 
 
 # ============================================================
-# Graph Node
+# Graph Layer
 # ============================================================
 
-class GraphNode(IRNode):
+class GraphLayer(IRLayer):
 
-    type = "graph"
-    nodes = None
+    type: ClassVar[str] = "graph"
+    layers: Optional[Dict[str, IRLayer]]
 
-    def __init__(self, *, nodes=None, **kwargs):
+    def __init__(self, *, layers: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
         self.set_attr(
-            "nodes",
-            to_typed_dict(nodes, IRNode, IRNode.create)
+            "layers",
+            to_typed_dict(layers, IRLayer, IRLayer.create)
         )
 
     # --------------------------------------------------------
 
-    def has_subgraph(self):
+    def has_subgraph(self) -> bool:
         return True
 
-    def iter_subnodes(self):
-        if self.nodes:
-            for name, node in self.nodes.items():
-                yield name, node
+    def iter_sublayers(self) -> Iterator[Tuple[str, IRLayer]]:
+        if self.layers:
+            for name, layer in self.layers.items():
+                yield name, layer
 
     # --------------------------------------------------------
 
-    def add_node(self, name, node=None, **kwargs):
+    def add_layer(
+        self,
+        name: str,
+        layer: Optional[IRLayer] = None,
+        **kwargs: Any
+    ) -> None:
 
         NameSegment.parse(name)
 
-        if self.nodes is None:
-            self.nodes = {}
+        if self.layers is None:
+            self.layers = {}
 
-        if name in self.nodes:
-            raise ValueError(f"node {name!r} already exists")
+        if name in self.layers:
+            raise ValueError(f"layer {name!r} already exists")
 
-        if node is None:
-            self.nodes[name] = IRNode.create(kwargs)
-        elif isinstance(node, IRNode):
-            self.nodes[name] = node.clone(**kwargs)
+        if layer is None:
+            self.layers[name] = IRLayer.create(kwargs)   # type: ignore
+        elif isinstance(layer, IRLayer):
+            self.layers[name] = layer.clone(**kwargs)
         else:
-            raise TypeError("invalid node")
+            raise TypeError("invalid layer")
 
     # --------------------------------------------------------
 
-    def get_node(self, ref):
-        return get_ref(self, "nodes", ref)
+    def get_layer(self, ref: str) -> IRLayer:
+        return get_ref(self, "layers", ref)   # type: ignore
 
-    def require_node(self, ref):
-        return require_ref(self, "nodes", ref)
+    def require_layer(self, ref: str) -> IRLayer:
+        return require_ref(self, "layers", ref)   # type: ignore
 
     # --------------------------------------------------------
 
-    def validate(self):
+    def validate(self) -> None:
         super().validate()
 
-        if not self.nodes:
+        if not self.layers:
             return
 
         inputs = []
         outputs = []
 
-        for name, node in self.nodes.items():
-            if isinstance(node, InputNode):
+        for name, layer in self.layers.items():
+            if isinstance(layer, InputLayer):
                 inputs.append(name)
-            if isinstance(node, OutputNode):
+            if isinstance(layer, OutputLayer):
                 outputs.append(name)
 
         if len(inputs) == 0:
-            raise ValidationError("graph must contain at least one InputNode")
+            raise ValidationError("graph must contain at least one InputLayer")
 
         if len(outputs) == 0:
-            raise ValidationError("graph must contain at least one OutputNode")
+            raise ValidationError("graph must contain at least one OutputLayer")
 
 
 # ============================================================
-# Block Node
+# Block Layer
 # ============================================================
 
-class BlockNode(GraphNode):
+class BlockLayer(GraphLayer):
 
-    type = "block"
-    repeat = 1
+    type: ClassVar[str] = "block"
+    repeat: int
 
-    def __init__(self, *, repeat=None, **kwargs):
+    def __init__(self, *, repeat: Optional[int] = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.set_attr("repeat", repeat)
 
-    def validate(self):
+    def validate(self) -> None:
         super().validate()
 
         if not is_integer(self.repeat, min_val=1):
@@ -220,58 +228,58 @@ class BlockNode(GraphNode):
                 f"Invalid value for repeat: {self.repeat}"
             )
 
-    def is_single(self):
+    def is_single(self) -> bool:
         return self.repeat == 1
 
 
 # ============================================================
-# IO Nodes
+# IO Layers
 # ============================================================
 
-class IONode(IRNode):
+class IOLayer(IRLayer):
 
-    __abstract__ = True
+    __abstract__: ClassVar[bool] = True
 
-    def validate(self):
+    def validate(self) -> None:
         super().validate()
 
         if self.weights:
-            raise ValidationError("IO node cannot have weights")
+            raise ValidationError("IO layer cannot have weights")
 
         if self.has_subgraph():
-            raise ValidationError("IO node cannot have subgraphs")
+            raise ValidationError("IO layer cannot have subgraphs")
 
 
-class InputNode(IONode):
+class InputLayer(IOLayer):
 
-    type = "input"
+    type: ClassVar[str] = "input"
 
-    def validate(self):
+    def validate(self) -> None:
         super().validate()
 
         if self.inputs:
-            raise ValidationError("Input node cannot have inputs")
+            raise ValidationError("Input layer cannot have inputs")
 
         if not self.outputs:
-            raise ValidationError("Input node must have at least one output")
+            raise ValidationError("Input layer must have at least one output")
 
 
-class OutputNode(IONode):
+class OutputLayer(IOLayer):
 
-    type = "output"
+    type: ClassVar[str] = "output"
 
-    def validate(self):
+    def validate(self) -> None:
         super().validate()
 
         if not self.inputs:
-            raise ValidationError("Output node must have at least one input")
+            raise ValidationError("Output layer must have at least one input")
 
         if self.outputs:
-            raise ValidationError("Output node cannot have outputs")
+            raise ValidationError("Output layer cannot have outputs")
 
 
 # ============================================================
 # Factory Shortcut
 # ============================================================
 
-make_node = IRNode.create
+make_layer: Callable[..., IRLayer] = IRLayer.create

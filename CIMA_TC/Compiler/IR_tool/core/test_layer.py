@@ -1,13 +1,13 @@
 import pytest
 
 from .layer import (
-    IRNode,
-    OpNode,
-    GraphNode,
-    BlockNode,
-    InputNode,
-    OutputNode,
-    make_node,
+    IRLayer,
+    OpLayer,
+    GraphLayer,
+    BlockLayer,
+    InputLayer,
+    OutputLayer,
+    make_layer,
 )
 from .type_utils import ValidationError
 from .op import BaseOp, UnaryOp
@@ -21,15 +21,15 @@ def dd():
     return {}
 
 
-def input_node():
-    return make_node({
+def input_layer():
+    return make_layer({
         "type": "input",
         "outputs": {"out": dd()}
     })
 
 
-def output_node():
-    return make_node({
+def output_layer():
+    return make_layer({
         "type": "output",
         "inputs": {"inp": dd()}
     })
@@ -38,29 +38,29 @@ class ReluOp(UnaryOp):
     op_id = "relu"
 
 # ============================================================
-# Basic node creation
+# Basic layer creation
 # ============================================================
 
-def test_basic_irnode_creation():
+def test_basic_irlayer_creation():
 
-    node = make_node({
+    layer = make_layer({
         "type": "op",
         "op": "relu",
         "inputs": {"x": dd()},
         "outputs": {"y": dd()}
     })
 
-    node.validate()
+    layer.validate()
 
 
 # ============================================================
-# OpNode validation
+# OpLayer validation
 # ============================================================
 
-def test_opnode_invalid_input_number():
+def test_oplayer_invalid_input_number():
 
     with pytest.raises(ValidationError):
-        node = make_node({
+        layer = make_layer({
             "type": "op",
             "op": "relu",
             "inputs": {},   # empty
@@ -68,18 +68,18 @@ def test_opnode_invalid_input_number():
     })
 
     # with pytest.raises(ValidationError):
-        node.validate()
+        layer.validate()
 
 
 # ============================================================
-# GraphNode
+# GraphLayer
 # ============================================================
 
-def test_graphnode_add_and_validate():
+def test_graphlayer_add_and_validate():
 
-    g = make_node({
+    g = make_layer({
         "type": "graph",
-        "nodes": {
+        "layers": {
             "in": {
                 "type": "input",
                 "outputs": {"out": dd()}
@@ -94,12 +94,12 @@ def test_graphnode_add_and_validate():
     g.validate()
 
 
-def test_graphnode_missing_input():
+def test_graphlayer_missing_input():
 
     with pytest.raises(ValidationError):
-        g = make_node({
+        g = make_layer({
             "type": "graph",
-            "nodes": {
+            "layers": {
                 "out": {
                     "type": "output",
                     "inputs": {"inp": dd()}
@@ -111,12 +111,12 @@ def test_graphnode_missing_input():
     #     g.validate()
 
 
-def test_graphnode_missing_output():
+def test_graphlayer_missing_output():
 
     with pytest.raises(ValidationError):
-        g = make_node({
+        g = make_layer({
             "type": "graph",
-            "nodes": {
+            "layers": {
                 "in": {
                     "type": "input",
                     "outputs": {"out": dd()}
@@ -132,11 +132,11 @@ def test_graphnode_missing_output():
 # Multi IO
 # ============================================================
 
-def test_graphnode_multi_io():
+def test_graphlayer_multi_io():
 
-    g = make_node({
+    g = make_layer({
         "type": "graph",
-        "nodes": {
+        "layers": {
             "in1": {
                 "type": "input",
                 "outputs": {"o1": dd()}
@@ -165,16 +165,16 @@ def test_graphnode_multi_io():
 
 def test_nested_graph():
 
-    g = make_node({
+    g = make_layer({
         "type": "graph",
-        "nodes": {
+        "layers": {
             "in": {
                 "type": "input",
                 "outputs": {"o": dd()}
             },
             "sub": {
                 "type": "graph",
-                "nodes": {
+                "layers": {
                     "in2": {
                         "type": "input",
                         "outputs": {"o2": dd()}
@@ -196,15 +196,15 @@ def test_nested_graph():
 
 
 # ============================================================
-# BlockNode
+# BlockLayer
 # ============================================================
 
-def test_blocknode_repeat():
+def test_blocklayer_repeat():
 
-    b = make_node({
+    b = make_layer({
         "type": "block",
         "repeat": 3,
-        "nodes": {
+        "layers": {
             "in": {
                 "type": "input",
                 "outputs": {"o": dd()}
@@ -219,13 +219,13 @@ def test_blocknode_repeat():
     b.validate()
 
 
-def test_blocknode_invalid_repeat():
+def test_blocklayer_invalid_repeat():
 
     with pytest.raises(ValidationError):
-        b = make_node({
+        b = make_layer({
             "type": "block",
             "repeat": 0,
-            "nodes": {
+            "layers": {
                 "in": {
                     "type": "input",
                     "outputs": {"o": dd()}
@@ -241,47 +241,47 @@ def test_blocknode_invalid_repeat():
     #     b.validate()
 
 # ============================================================
-# OpNode attribute access
+# OpLayer attribute access
 # ============================================================
 
-def test_opnode_attribute_access():
+def test_oplayer_attribute_access():
 
-    node = make_node({
+    layer = make_layer({
         "type": "op",
         "op": "relu",
         "inputs": {"x": dd()},
         "outputs": {"y": dd()}
     })
-
+    
     # ---- basic attributes ----
-    assert node.type == "op"
-    assert isinstance(node.op, ReluOp) 
+    assert layer.type == "op"
+    assert isinstance(layer.op, ReluOp) 
 
     # ---- inputs / outputs ----
-    assert isinstance(node.inputs, dict)
-    assert "x" in node.inputs
-    assert isinstance(node.inputs["x"], type(node.inputs["x"]))
+    assert isinstance(layer.inputs, dict)
+    assert "x" in layer.inputs
+    assert isinstance(layer.inputs["x"], type(layer.inputs["x"]))
 
-    assert isinstance(node.outputs, dict)
-    assert "y" in node.outputs
+    assert isinstance(layer.outputs, dict)
+    assert "y" in layer.outputs
 
     # ---- weights default ----
-    assert node.weights is None
+    assert layer.weights is None
 
     # ---- subgraph capability ----
-    assert node.has_subgraph() is False
-    assert list(node.iter_subnodes()) == []
+    assert layer.has_subgraph() is False
+    assert list(layer.iter_sublayers()) == []
 
 
 # ============================================================
-# GraphNode attribute access
+# GraphLayer attribute access
 # ============================================================
 
-def test_graphnode_attribute_access():
+def test_graphlayer_attribute_access():
 
-    g = make_node({
+    g = make_layer({
         "type": "graph",
-        "nodes": {
+        "layers": {
             "in": {
                 "type": "input",
                 "outputs": {"o": dd()}
@@ -294,29 +294,29 @@ def test_graphnode_attribute_access():
     })
 
     assert g.type == "graph"
-    assert isinstance(g.nodes, dict)
-    assert "in" in g.nodes
-    assert "out" in g.nodes
+    assert isinstance(g.layers, dict)
+    assert "in" in g.layers
+    assert "out" in g.layers
 
     # subgraph capability
     assert g.has_subgraph() is True
-    assert len(list(g.iter_subnodes())) == 2
+    assert len(list(g.iter_sublayers())) == 2
 
-    # child node types
-    assert isinstance(g.nodes["in"], InputNode)
-    assert isinstance(g.nodes["out"], OutputNode)
+    # child layer types
+    assert isinstance(g.layers["in"], InputLayer)
+    assert isinstance(g.layers["out"], OutputLayer)
 
 
 # ============================================================
-# BlockNode attribute access
+# BlockLayer attribute access
 # ============================================================
 
-def test_blocknode_attribute_access():
+def test_blocklayer_attribute_access():
 
-    b = make_node({
+    b = make_layer({
         "type": "block",
         "repeat": 2,
-        "nodes": {
+        "layers": {
             "in": {
                 "type": "input",
                 "outputs": {"o": dd()}
@@ -333,26 +333,26 @@ def test_blocknode_attribute_access():
     assert b.is_single() is False
 
     # inherited graph behavior
-    assert isinstance(b.nodes, dict)
+    assert isinstance(b.layers, dict)
     assert b.has_subgraph() is True
 
 
 # ============================================================
-# IO node restrictions
+# IO layer restrictions
 # ============================================================
 
-def test_inputnode_access():
+def test_inputlayer_access():
 
-    n = input_node()
+    n = input_layer()
 
     assert n.type == "input"
     assert n.inputs is None
     assert isinstance(n.outputs, dict)
 
 
-def test_outputnode_access():
+def test_outputlayer_access():
 
-    n = output_node()
+    n = output_layer()
 
     assert n.type == "output"
     assert isinstance(n.inputs, dict)

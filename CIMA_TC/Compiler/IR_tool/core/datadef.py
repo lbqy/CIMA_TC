@@ -156,7 +156,7 @@ class DataDef(Jsonable):
         else:
             raise TypeError("ref must be None, str, or Ref")
 
-    def get_ref_segments(self):
+    def get_ref_segments(self) -> Optional[Tuple[str, ...]]:
         """
         Return structured segments if ref exists.
         """

@@ -1,220 +1,114 @@
-from ..core import UnaryOp, BinaryOp
+from ..core import UnaryOp, is_integer, is_number
 
-# sign, abs, neg, ceil, floor
 
-class SignOp(UnaryOp):
+class ReluOp(UnaryOp):
 
-    op_id = 'sign'
+    op_id = 'relu'
 
 
-class AbsOp(UnaryOp):
+class LeakyReluOp(UnaryOp):
 
-    op_id = 'abs'
+    op_id = 'leaky_relu'
+    attrs = ('alpha',)
+    alpha = 0.01
 
+    def __init__(self, *, alpha=None, **kwargs):
+        super().__init__(**kwargs)
+        self.set_attr('alpha', alpha, is_number)
 
-class NegOp(UnaryOp):
 
-    op_id = 'neg'
+class PReluOp(UnaryOp):
 
+    op_id = 'prelu'
+    weights = ('slope',)
 
-class CeilOp(UnaryOp):
+    def __init__(self, *, slope=None, **kwargs):
+        super().__init__(**kwargs)
+        self.set_attr('slope', slope, is_number)
 
-    op_id = 'ceil'
+    def weight_shapes(self, **kwargs):
+        return dict(slope=())
 
 
-class FloorOp(UnaryOp):
+class SeluOp(UnaryOp):
 
-    op_id = 'floor'
+    op_id = 'selu'
+    attrs = ('alpha', 'gamma')
+    alpha = 1.6732632423543772848170429916717
+    gamma = 1.0507009873554804934193349852946
 
+    def __init__(self, *, alpha=None, gamma=None, **kwargs):
+        super().__init__(**kwargs)
+        self.set_attr('alpha', alpha, is_number)
+        self.set_attr('gamma', gamma, is_number)
 
-# add, sub, mul, div, mod, pow
 
-class AddOp(BinaryOp):
+class CeluOp(UnaryOp):
 
-    op_id = 'add'
+    op_id = 'celu'
+    attrs = ('alpha',)
+    alpha = 1.0
 
+    def __init__(self, *, alpha=None, **kwargs):
+        super().__init__(**kwargs)
+        self.set_attr('alpha', alpha, is_number)
 
-class SubOp(BinaryOp):
 
-    op_id = 'sub'
+class EluOp(UnaryOp):
 
+    op_id = 'elu'
+    attrs = ('alpha',)
+    alpha = 1.0
 
-class MulOp(BinaryOp):
+    def __init__(self, *, alpha=None, **kwargs):
+        super().__init__(**kwargs)
+        self.set_attr('alpha', alpha, is_number)
 
-    op_id = 'mul'
 
+class SoftmaxOp(UnaryOp):
 
-class DivOp(BinaryOp):
+    op_id = 'softmax'
+    attrs = ('axis',)
+    axis = -1
 
-    op_id = 'div'
+    def __init__(self, *, axis=None, **kwargs):
+        super().__init__(**kwargs)
+        self.set_attr('axis', axis, is_integer)
 
 
-class ModOp(BinaryOp):
+class LogSoftmaxOp(SoftmaxOp):
 
-    op_id = 'mod'
+    op_id = 'log_softmax'
 
 
-class PowOp(BinaryOp):
+class SigmoidOp(UnaryOp):
 
-    op_id = 'pow'
+    op_id = 'sigmoid'
 
 
-# exp, log, sqrt
+class HardSigmoidOp(UnaryOp):
 
-class ExpOp(UnaryOp):
+    op_id = 'hard_sigmoid'
+    attrs = ('alpha', 'beta')
+    alpha = 0.2
+    beta = 0.5
 
-    op_id = 'exp'
+    def __init__(self, *, alpha=None, beta=None, **kwargs):
+        super().__init__(**kwargs)
+        self.set_attr('alpha', alpha, is_number)
+        self.set_attr('beta', beta, is_number)
 
 
-class LogOp(UnaryOp):
+class SoftplusOp(UnaryOp):
 
-    op_id = 'log'
+    op_id = 'softplus'
 
 
-class SqrtOp(UnaryOp):
+class SoftsignOp(UnaryOp):
 
-    op_id = 'sqrt'
+    op_id = 'softsign'
 
 
-# sin, cos, tan
+class SiluOp(UnaryOp):
 
-class SinOp(UnaryOp):
-
-    op_id = 'sin'
-
-
-class CosOp(UnaryOp):
-
-    op_id = 'cos'
-
-
-class TanOp(UnaryOp):
-
-    op_id = 'tan'
-
-
-# asin, acos, atan
-
-class AsinOp(UnaryOp):
-
-    op_id = 'asin'
-
-
-class AcosOp(UnaryOp):
-
-    op_id = 'acos'
-
-
-class AtanOp(UnaryOp):
-
-    op_id = 'atan'
-
-
-# sinh, cosh, tanh
-
-class SinhOp(UnaryOp):
-
-    op_id = 'sinh'
-
-
-class CoshOp(UnaryOp):
-
-    op_id = 'cosh'
-
-
-class TanhOp(UnaryOp):
-
-    op_id = 'tanh'
-
-
-# asinh, acosh, atanh
-
-class AsinhOp(UnaryOp):
-
-    op_id = 'asinh'
-
-
-class AcoshOp(UnaryOp):
-
-    op_id = 'acosh'
-
-
-class AtanhOp(UnaryOp):
-
-    op_id = 'atanh'
-
-
-# logical not, and, or, xor
-
-class LogicalNotOp(UnaryOp):
-
-    op_id = 'logical_not'
-
-
-class LogicalAndOp(BinaryOp):
-
-    op_id = 'logical_and'
-
-
-class LogicalOrOp(BinaryOp):
-
-    op_id = 'logical_or'
-
-
-class LogicalXorOp(BinaryOp):
-
-    op_id = 'logical_xor'
-
-
-# bitwise not, and, or, xor
-
-class BitwiseNotOp(UnaryOp):
-
-    op_id = 'bitwise_not'
-
-
-class BitwiseAndOp(BinaryOp):
-
-    op_id = 'bitwise_and'
-
-
-class BitwiseOrOp(BinaryOp):
-
-    op_id = 'bitwise_or'
-
-
-class BitwiseXorOp(BinaryOp):
-
-    op_id = 'bitwise_xor'
-
-
-# equal, less, less_or_equal, greater, greater_or_equal
-
-class EqualOp(BinaryOp):
-
-    op_id = 'equal'
-
-
-class LessOp(BinaryOp):
-
-    op_id = 'less'
-
-
-class LessOrEqualOp(BinaryOp):
-
-    op_id = 'less_or_equal'
-
-
-class GreaterOp(BinaryOp):
-
-    op_id = 'greater'
-
-
-class GreaterOrEqualOp(BinaryOp):
-
-    op_id = 'greater_or_equal'
-
-# Erf
-class ErfOp(UnaryOp):
-    
-    op_id = 'erf'
+    op_id = 'silu'
