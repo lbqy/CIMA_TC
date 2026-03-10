@@ -166,6 +166,10 @@ def is_integers(
     min_size: int = 0,
     max_size: Optional[int] = None,
     exact_size: Optional[int] = None,
+    ndims: Optional[tuple[int, ...]] = None,
+    min_dim: Optional[int] = None,
+    max_dim: Optional[int] = None,
+    exact_dim: Optional[int] = None,
     allow_none: bool = False,
     allow_scalar: bool = False,
     **integer_kwargs: Any
@@ -176,6 +180,27 @@ def is_integers(
 
     integer_kwargs are passed to is_integer().
     """
+    if min_dim is not None:
+        min_size = max(min_size, min_dim)
+    if max_dim is not None:
+        max_size = max_dim if max_size is None else min(max_size, max_dim)
+    if exact_dim is not None and exact_size is None:
+        exact_size = exact_dim
+
+    # Accept scalar integer as a 1-dim "sequence" when allowed/expected
+    if obj is None:
+        return allow_none
+    if is_scalar(obj) and not isinstance(obj, (str, bytes, bytearray, dict)):
+        if allow_scalar or (ndims is not None and 1 in ndims):
+            if exact_size is not None and exact_size != 1:
+                return False
+            if 1 < min_size:
+                return False
+            if max_size is not None and 1 > max_size:
+                return False
+            return is_integer(obj, **integer_kwargs)
+        return False
+
     constraints = CollectionConstraints(
         min_size=min_size,
         max_size=max_size,
@@ -184,11 +209,20 @@ def is_integers(
         allow_scalar=allow_scalar,
     )
 
-    return validate_collection(
+    ok = validate_collection(
         obj,
         lambda x: is_integer(x, **integer_kwargs),
         constraints,
     )
+    if not ok:
+        return False
+    if ndims is not None:
+        try:
+            n = len(obj)  # type: ignore[arg-type]
+        except TypeError:
+            n = 1
+        return n in ndims
+    return True
 
 def is_numbers(
     obj: Any,
@@ -196,6 +230,10 @@ def is_numbers(
     min_size: int = 0,
     max_size: Optional[int] = None,
     exact_size: Optional[int] = None,
+    ndims: Optional[tuple[int, ...]] = None,
+    min_dim: Optional[int] = None,
+    max_dim: Optional[int] = None,
+    exact_dim: Optional[int] = None,
     allow_none: bool = False,
     allow_scalar: bool = False,
     **number_kwargs: Any
@@ -206,6 +244,26 @@ def is_numbers(
 
     number_kwargs are passed to is_number().
     """
+    if min_dim is not None:
+        min_size = max(min_size, min_dim)
+    if max_dim is not None:
+        max_size = max_dim if max_size is None else min(max_size, max_dim)
+    if exact_dim is not None and exact_size is None:
+        exact_size = exact_dim
+
+    if obj is None:
+        return allow_none
+    if is_scalar(obj) and not isinstance(obj, (str, bytes, bytearray, dict)):
+        if allow_scalar or (ndims is not None and 1 in ndims):
+            if exact_size is not None and exact_size != 1:
+                return False
+            if 1 < min_size:
+                return False
+            if max_size is not None and 1 > max_size:
+                return False
+            return is_number(obj, **number_kwargs)
+        return False
+
     constraints = CollectionConstraints(
         min_size=min_size,
         max_size=max_size,
@@ -214,11 +272,20 @@ def is_numbers(
         allow_scalar=allow_scalar,
     )
 
-    return validate_collection(
+    ok = validate_collection(
         obj,
         lambda x: is_number(x, **number_kwargs),
         constraints,
     )
+    if not ok:
+        return False
+    if ndims is not None:
+        try:
+            n = len(obj)  # type: ignore[arg-type]
+        except TypeError:
+            n = 1
+        return n in ndims
+    return True
 
 # ==================== VALUE RANGE VALIDATORS ====================
 def is_in_values(
@@ -293,6 +360,7 @@ def to_integer_tuple(
     obj: Any,
     *,
     dimensions: Optional[int] = None,
+    ndim: Optional[int] = None,
     keep_scalar: bool = False,
     allow_float2int: bool = True
 ) -> Union[int, tuple[int, ...]]:
@@ -307,6 +375,8 @@ def to_integer_tuple(
     Returns:
         Integer tuple or single integer
     """
+    if dimensions is None and ndim is not None:
+        dimensions = ndim
     if dimensions is not None and dimensions < 0:
         raise ValueError("Dimensions cannot be negative")
     

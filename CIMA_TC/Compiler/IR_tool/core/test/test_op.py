@@ -15,7 +15,7 @@ Covers:
 
 import pytest
 
-from .op import (
+from ..op import (
     BaseOp,
     UnaryOp,
     BinaryOp,
@@ -47,9 +47,6 @@ class Neg(UnaryOp):
     def execute(self, a):
         return -a
 
-# pytest -s
-print("registry:", BaseOp._registry)
-
 # ============================================================
 # Registry Root Behavior
 # ============================================================
@@ -68,6 +65,13 @@ def test_abstract_classes_not_registered():
     assert "unaryop" not in BaseOp._registry
     assert "binaryop" not in BaseOp._registry
 
+
+def test_registry_keys_lowercase():
+    """Registered keys are stored in lowercase."""
+    assert "add" in BaseOp._registry
+    assert "ADD" not in BaseOp._registry
+    assert BaseOp.lookup("ADD") is Add
+
 # ============================================================
 # enum_op_ids
 # ============================================================
@@ -77,6 +81,12 @@ def test_enum_op_ids():
     assert "add" in ids
     assert "sub" in ids
     assert "neg" in ids
+
+
+def test_enum_op_ids_consistency_with_registry():
+    """enum_op_ids yields exactly the registry keys."""
+    ids = set(enum_op_ids())
+    assert ids == set(BaseOp._registry.keys())
 
 
 # ============================================================
@@ -153,6 +163,11 @@ def test_make_op_none_with_kwargs():
     assert isinstance(op, Add)
 
 
+def test_make_op_none_no_kwargs_returns_none():
+    """make_op(None) with no kwargs returns None (reg.create contract)."""
+    assert make_op(None) is None
+
+
 # ============================================================
 # Validation
 # ============================================================
@@ -167,6 +182,28 @@ def test_validation_called():
 
     with pytest.raises(ValueError):
         make_op("bad")
+
+
+def test_make_op_invalid_key_raises():
+    """make_op with unregistered key raises KeyError."""
+    with pytest.raises(KeyError):
+        make_op("_nonexistent_op_xyz_")
+
+
+# ============================================================
+# num_inputs
+# ============================================================
+
+def test_num_inputs_unary():
+    """UnaryOp has num_inputs = 1."""
+    op = make_op("neg")
+    assert op.num_inputs == 1
+
+
+def test_num_inputs_binary():
+    """BinaryOp has num_inputs = 2."""
+    op = make_op("add")
+    assert op.num_inputs == 2
 
 
 # ============================================================
@@ -224,7 +261,7 @@ def test_duplicate_op_id_raises():
 
 def test_registry_isolation():
 
-    from .reg import RegistryMixin, RegistryEntry
+    from ..reg import RegistryMixin, RegistryEntry
 
     class AnotherRoot(RegistryMixin, RegistryEntry):
         __registry_key__ = "name"
@@ -234,3 +271,15 @@ def test_registry_isolation():
 
     assert "foo" in AnotherRoot._registry
     assert "foo" not in BaseOp._registry
+
+
+def test_get_attrs_empty():
+    """get_attrs returns empty dict when attrs is empty."""
+    op = make_op("add")
+    assert op.get_attrs() == {}
+
+
+def test_make_op_from_dict_merge_kwargs():
+    """Extra kwargs merge with dict source."""
+    op = make_op({"op_id": "add"}, op_id="add")
+    assert isinstance(op, Add)

@@ -109,7 +109,7 @@ class Ref:
 
         parts = raw.split(".")
         try:
-            segments = tuple(NameSegment.parse(p) for p in parts)
+            segments = tuple[NameSegment, ...](NameSegment.parse(p) for p in parts)
         except InvalidNameError as e:
             raise InvalidRefError(str(e)) from e
 
@@ -120,7 +120,7 @@ class Ref:
         cls,
         segments: Iterable[NameSegment],
     ) -> Ref:
-        return cls(tuple(segments))
+        return cls(tuple[NameSegment, ...](segments))
 
     # ------------------------
     # Representation

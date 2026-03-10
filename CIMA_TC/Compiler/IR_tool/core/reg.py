@@ -270,11 +270,17 @@ class RegistryMixin(metaclass=RegistryMeta):
             key_attr = cls._registry_key_attribute
             key = source.get(key_attr)
             if not key:
-                raise ValueError(
-                    f"Mapping must contain key '{key_attr}'"
-                )
+                default_key = getattr(cls, "_default_key", None)
+                if default_key:
+                    key = default_key
+                else:
+                    raise ValueError(
+                        f"Mapping must contain key '{key_attr}'"
+                    )
             entry_cls = cls.get(key)
             merged = {**source, **kwargs}
+            if key_attr not in merged:
+                merged = {key_attr: key, **merged}
             instance = entry_cls(**merged)
 
         elif source is None:

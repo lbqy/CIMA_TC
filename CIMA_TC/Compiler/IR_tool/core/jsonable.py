@@ -78,7 +78,7 @@ class SerializationConfig:
     def __init__(
         self,
         filter_policy: Union[FilterPolicy, bool, Callable[[str, Any], bool]] = FilterPolicy.EXCLUDE_PRIVATE,
-        exclude_none: bool = False,
+        exclude_none: bool = True,
         exclude_empty: bool = False,
         max_depth: Optional[int] = 1_000_000,
         indent: Optional[int] = 2,

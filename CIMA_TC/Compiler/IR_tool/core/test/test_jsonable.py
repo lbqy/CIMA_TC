@@ -7,7 +7,7 @@ from decimal import Decimal
 from uuid import uuid4
 from dataclasses import dataclass
 
-from .jsonable import (
+from ..jsonable import (
     to_json_obj,
     dump_json,
     load_json,
@@ -256,3 +256,71 @@ def test_round_trip():
 
     assert data["name"] == "Clara"
     assert data["address"]["country"] == "Norway"
+
+
+# ============================================================
+# SerializationConfig
+# ============================================================
+
+def test_config_copy():
+    """SerializationConfig.copy returns new config with overrides."""
+    cfg = SerializationConfig(exclude_none=True, max_depth=10)
+    cfg2 = cfg.copy(max_depth=5)
+    assert cfg2.max_depth == 5
+    assert cfg2.exclude_none is True
+    assert cfg.max_depth == 10
+
+
+def test_config_exclude_none():
+    """exclude_none=True omits None values from dict serialization."""
+    obj = {"a": 1, "b": None, "c": "x"}
+    cfg = SerializationConfig(exclude_none=True)
+    result = to_json_obj(obj, config=cfg)
+    assert "a" in result and "c" in result
+    assert "b" not in result
+
+
+def test_config_include_none():
+    """exclude_none=False keeps None values."""
+    obj = {"a": 1, "b": None}
+    cfg = SerializationConfig(exclude_none=False)
+    result = to_json_obj(obj, config=cfg)
+    assert result["b"] is None
+
+
+def test_config_exclude_empty():
+    """exclude_empty=True omits empty dict/list from serialization."""
+    obj = {"a": [], "b": {}, "c": 1}
+    cfg = SerializationConfig(exclude_empty=True)
+    result = to_json_obj(obj, config=cfg)
+    assert result.get("c") == 1
+    assert "a" not in result
+    assert "b" not in result
+
+
+# ============================================================
+# Jsonable.set_attr and clone
+# ============================================================
+
+def test_jsonable_set_attr():
+    """set_attr sets attribute; validator can be used."""
+    addr = Address("London", "UK")
+    addr.set_attr("city", "Paris")
+    assert addr.city == "Paris"
+
+
+def test_jsonable_set_attr_not_none_raises():
+    """set_attr with not_none=True raises when value is None."""
+    from ..type_utils import ValidationError
+    addr = Address("x", "y")
+    with pytest.raises(ValidationError):
+        addr.set_attr("city", None, not_none=True)
+
+
+def test_jsonable_clone():
+    """clone creates new instance with overrides applied to serialized dict."""
+    addr = Address("Berlin", "Germany")
+    addr2 = addr.clone(city="Munich")
+    assert addr2.city == "Munich"
+    assert addr2.country == "Germany"
+    assert addr.city == "Berlin"

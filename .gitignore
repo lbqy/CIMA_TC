@@ -2,3 +2,6 @@ Miniconda3-latest-Linux-x86_64.sh
 .hypothesis/
 .pytest_cache/
 **/__pycache__/
+
+# Jupyter notebooks (typically for debugging only)
+*.ipynb

@@ -95,23 +95,29 @@ class DataDef(Jsonable):
         # Tuple attributes
         # -----------------------------
 
-        dims_tuple = to_integer_tuple(dims, keep_scalar=True)
-        self.set_attr(
-            "dims",
-            dims_tuple,
-            is_integers,
-            min_val=1,
-            min_dim=1,
-        )
+        if dims is not None:
+            dims_tuple = to_integer_tuple(dims, keep_scalar=False)
+            self.set_attr(
+                "dims",
+                dims_tuple,
+                is_integers,
+                min_val=1,
+                min_dim=1,
+            )
+        else:
+            self.dims = None
 
-        shape_tuple = to_integer_tuple(shape, keep_scalar=True)
-        self.set_attr(
-            "shape",
-            shape_tuple,
-            is_integers,
-            min_val=0,
-            min_dim=0,
-        )
+        if shape is not None:
+            shape_tuple = to_integer_tuple(shape, keep_scalar=True)
+            self.set_attr(
+                "shape",
+                shape_tuple,
+                is_integers,
+                min_val=0,
+                min_dim=0,
+            )
+        else:
+            self.shape = None
 
         self.shapes = None
 

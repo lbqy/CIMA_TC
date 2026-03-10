@@ -14,7 +14,7 @@ Covers:
 
 import pytest
 
-from .reg import (
+from ..reg import (
     RegistryMixin,
     RegistryEntry,
 )
@@ -120,6 +120,23 @@ def test_get_missing_raises():
         Operation.get("invalid")
 
 
+def test_all_registered():
+    """all_registered yields (key, class) for each entry."""
+    pairs = list(Operation.all_registered())
+    keys = [p[0] for p in pairs]
+    assert "add" in keys
+    assert "sub" in keys
+    assert all(callable(p[1]) for p in pairs)
+
+
+def test_is_registered():
+    """is_registered returns True for existing key, False otherwise."""
+    assert Operation.is_registered("add") is True
+    assert Operation.is_registered("sub") is True
+    assert Operation.is_registered("nonexistent") is False
+    assert Operation.is_registered("ADD") is True
+
+
 # ============================================================
 # Factory Creation Tests
 # ============================================================
@@ -164,6 +181,13 @@ def test_create_none_returns_none():
     create(None) without kwargs should return None.
     """
     assert Operation.create(None) is None
+
+
+def test_create_from_mapping_missing_key_uses_default():
+    """When mapping lacks registry key, __registry_default__ is used if set."""
+    op = Operation.create({})
+    assert op is not None
+    assert isinstance(op, Add)
 
 
 # ============================================================
@@ -233,3 +257,21 @@ def test_multiple_registries_are_isolated():
 
     assert "dog" in Animal._registry
     assert "dog" not in Operation._registry
+
+
+def test_abstract_not_registered():
+    """Classes with __abstract__ = True are not registered."""
+    from ..reg import RegistryMixin, RegistryEntry
+
+    class Base(RegistryMixin, RegistryEntry):
+        __registry_key__ = "k"
+
+    class Abstract(Base):
+        __abstract__ = True
+        k = "abstract"
+
+    class Concrete(Base):
+        k = "concrete"
+
+    assert "concrete" in Base._registry
+    assert "abstract" not in Base._registry

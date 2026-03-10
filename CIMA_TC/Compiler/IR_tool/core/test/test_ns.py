@@ -2,7 +2,7 @@ import threading
 import time
 import pytest
 
-from .ns import ns_push, ns_get
+from ..ns import ns_push, ns_get
 
 
 # ----------------------------------------------------------------------
@@ -161,4 +161,20 @@ def test_many_nested_pushes():
     for ctx in reversed(contexts):
         ctx.__exit__(None, None, None)
 
+    assert ns_get() == ""
+
+
+def test_empty_string_segment():
+    """Empty string as segment is allowed (if API allows); otherwise document behavior."""
+    with ns_push(""):
+        assert ns_get() == ""
+
+
+def test_sequential_push_same_name():
+    """Pushing same name twice in sequence gives A/A."""
+    with ns_push("A"):
+        assert ns_get() == "A"
+        with ns_push("A"):
+            assert ns_get() == "A/A"
+        assert ns_get() == "A"
     assert ns_get() == ""

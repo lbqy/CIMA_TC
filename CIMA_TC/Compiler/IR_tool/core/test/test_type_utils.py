@@ -1,7 +1,7 @@
 import pytest
 import warnings
 
-from .type_utils import (
+from ..type_utils import (
     is_scalar,
     is_boolean,
     is_integer,
@@ -179,6 +179,37 @@ def test_to_integer_tuple_invalid_element():
         to_integer_tuple(["a"])
 
 
+def test_to_integer_tuple_ndim_alias():
+    """ndim is alias for dimensions."""
+    assert to_integer_tuple(3, ndim=2) == (3, 3)
+    assert to_integer_tuple([1, 2], ndim=4) == (1, 2, 1, 2)
+
+
+def test_to_integer_tuple_keep_scalar():
+    """keep_scalar=True leaves int as int."""
+    assert to_integer_tuple(5, keep_scalar=True) == 5
+    assert to_integer_tuple([1, 2], keep_scalar=True) == (1, 2)
+
+
+def test_to_integer_tuple_none():
+    """None with keep_scalar returns None; without returns ()."""
+    assert to_integer_tuple(None, keep_scalar=True) is None
+    assert to_integer_tuple(None) == ()
+
+
+def test_is_integers_ndims():
+    """ndims restricts allowed sequence lengths."""
+    assert is_integers([1], ndims=(1, 2))
+    assert is_integers([1, 2], ndims=(1, 2))
+    assert not is_integers([1, 2, 3], ndims=(1, 2))
+
+
+def test_is_numbers_ndims():
+    """ndims for is_numbers."""
+    assert is_numbers([1.0, 2.0], ndims=(2,))
+    assert not is_numbers([1.0], ndims=(2,))
+
+
 # =========================================================
 # to_typed_object / dict / list
 # =========================================================
@@ -241,3 +272,26 @@ def test_to_variable_token():
     assert to_variable_token("123abc") == "_123abc"
     assert to_variable_token(None, allow_none=True) is None
     assert to_variable_token(None) == ""
+
+
+def test_is_in_values_allow_none_false():
+    """is_in_values with allow_none=False rejects None."""
+    assert not is_in_values(None, (1, 2), allow_none=False)
+
+
+def test_validate_collection_fail():
+    """validate_collection returns False when element validator fails."""
+    constraints = CollectionConstraints(min_size=1, max_size=3)
+    assert not validate_collection([1, "x"], is_integer, constraints)
+
+
+def test_to_boolean_integer():
+    """to_boolean accepts 0 and 1."""
+    assert to_boolean(0) is False
+    assert to_boolean(1) is True
+
+
+def test_to_typed_list_empty():
+    """to_typed_list with empty list returns empty list."""
+    result = to_typed_list([], Dummy)
+    assert result == []

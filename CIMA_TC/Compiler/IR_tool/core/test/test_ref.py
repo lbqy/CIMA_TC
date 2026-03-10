@@ -17,7 +17,7 @@ Designed for production-grade reliability.
 
 import pytest
 
-from .ref import (
+from ..ref import (
     NameSegment,
     Ref,
     resolve_ref,
@@ -287,3 +287,47 @@ def test_ref_object_input():
     )
 
     assert result is not None
+
+
+# ============================================================
+# Ref.from_segments
+# ============================================================
+
+def test_ref_from_segments():
+    """Ref.from_segments builds Ref from iterable of NameSegments."""
+    segs = [NameSegment.parse("a"), NameSegment.parse("b:2")]
+    ref = Ref.from_segments(segs)
+    assert len(ref) == 2
+    assert str(ref) == "a.b:2"
+    assert ref.segments[1].index == 2
+
+
+# ============================================================
+# Ref equality and hash (frozen dataclass)
+# ============================================================
+
+def test_ref_equality():
+    """Ref is frozen and equal Refs compare equal."""
+    r1 = Ref.parse("a.b:1")
+    r2 = Ref.parse("a.b:1")
+    assert r1 == r2
+    assert hash(r1) == hash(r2)
+
+
+def test_ref_inequality():
+    """Different Refs are not equal."""
+    r1 = Ref.parse("a.b")
+    r2 = Ref.parse("a.c")
+    assert r1 != r2
+
+
+# ============================================================
+# get_ref returns value when found
+# ============================================================
+
+def test_get_ref_success_returns_node():
+    """get_ref returns the resolved node when ref exists."""
+    root = build_sample_tree()
+    node = get_ref(root, key="children", ref="encoder.layer")
+    assert node is not None
+    assert getattr(node, "number", None) == 3

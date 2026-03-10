@@ -13,8 +13,8 @@ This test file validates:
 
 import pytest
 
-from .datadef import DataDef
-from .ref import Ref
+from ..datadef import DataDef
+from ..ref import Ref
 
 
 # ============================================================
@@ -71,12 +71,13 @@ def test_get_ref_segments():
 
 
 def test_json_only_ref():
+    """to_json_obj returns dict with ref when ref is set (other attrs may be None)."""
     d = DataDef(ref="a.b:1")
 
     json_obj = d.to_json_obj()
 
-    # Only ref → serialize as string
-    assert json_obj == "a.b:1"
+    assert isinstance(json_obj, dict)
+    assert json_obj.get("ref") == "a.b:1"
 
 
 def test_json_full_object():
@@ -233,3 +234,53 @@ def test_set_shape_multiple_history():
 
     assert d.shapes == [(1, 2, 3), (2, 3, 4)]
     assert d.shape == (3, 4, 5)
+
+
+# ============================================================
+# clone
+# ============================================================
+
+def test_datadef_clone():
+    """clone copies ref and attributes; overrides can be passed."""
+    d = DataDef(ref="a.b:1", channel=4, shape=(1, 4, 8))
+    c = d.clone(channel=8)
+    assert c.ref is not None and str(c.ref) == "a.b:1"
+    assert c.channel == 8
+    assert c.shape == (1, 4, 8)
+
+
+# ============================================================
+# JSON serialization with ref
+# ============================================================
+
+def test_json_ref_with_other_attr_is_dict():
+    """When ref and other attrs are set, to_json_obj returns dict with ref as string."""
+    d = DataDef(ref="a", channel=3)
+    obj = d.to_json_obj()
+    assert isinstance(obj, dict)
+    assert obj["ref"] == "a"
+    assert obj["channel"] == 3
+
+
+# ============================================================
+# Additional attribute validation
+# ============================================================
+
+def test_width_height_positive():
+    """width and height must be >= 1 when set."""
+    with pytest.raises(Exception):
+        DataDef(width=0)
+    with pytest.raises(Exception):
+        DataDef(height=0)
+
+
+def test_get_ref_segments_none():
+    """get_ref_segments returns None when ref is None."""
+    d = DataDef()
+    assert d.get_ref_segments() is None
+
+
+def test_datadef_dtype_passthrough():
+    """dtype is stored without strict validation."""
+    d = DataDef(ref="x", dtype="float32")
+    assert d.dtype == "float32"
