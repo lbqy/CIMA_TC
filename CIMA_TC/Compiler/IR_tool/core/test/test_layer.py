@@ -176,8 +176,8 @@ def test_graphlayer_get_all_inputs_outputs_with_branches():
     assert g.get_all_outputs()["split"] == ["out"]
 
 
-def test_graphlayer_implicit_outputs_not_serialized():
-    """Implicit outputs should not be emitted in JSON when outputs were not explicitly provided."""
+def test_graphlayer_outputs_serialized():
+    """Outputs (including graph-filled defaults) are included in JSON."""
     g = make_layer({
         "type": "graph",
         "layers": {
@@ -187,8 +187,8 @@ def test_graphlayer_implicit_outputs_not_serialized():
         },
     })
     obj = g.to_json_obj()
-    assert "outputs" not in obj["layers"]["in"]
-    assert "outputs" not in obj["layers"]["mid"]
+    assert "outputs" in obj["layers"]["in"]
+    assert "outputs" in obj["layers"]["mid"]
 
 
 def test_graphlayer_explicit_outputs_are_serialized():

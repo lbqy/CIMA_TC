@@ -29,11 +29,30 @@ def test_make_op_conv2d_by_string():
 
 
 def test_make_op_matmul_by_string():
-    """make_op('matmul') with channel args."""
-    op = make_op("matmul", in_channel=64, out_channel=128)
+    """make_op('matmul') = two dynamic inputs, no weights (e.g. attention Q@K)."""
+    op = make_op("matmul")
     assert op.op_id == "matmul"
+    assert op.num_inputs == 2
+    assert op.weight_shapes() == {}
+
+
+def test_make_op_linear_by_string():
+    """make_op('linear') = one input + static weight (in_channel, out_channel)."""
+    op = make_op("linear", in_channel=64, out_channel=128)
+    assert op.op_id == "linear"
+    assert op.num_inputs == 1
     assert op.in_channel == 64
     assert op.out_channel == 128
+
+
+def test_make_op_fc_by_string():
+    """make_op('fc') = same as linear, alias for fully connected."""
+    op = make_op("fc", in_channel=256, out_channel=64, bias=False)
+    assert op.op_id == "fc"
+    assert op.num_inputs == 1
+    assert op.in_channel == 256
+    assert op.out_channel == 64
+    assert op.bias is False
 
 
 def test_make_op_sigmoid_by_string():
@@ -161,12 +180,26 @@ def test_conv2d_weight_shapes():
     assert shapes["bias"] == (16,)
 
 
-def test_matmul_weight_shapes():
-    """MatMul weight_shapes."""
-    op = make_op("matmul", in_channel=64, out_channel=128)
+def test_matmul_no_weights():
+    """MatMul has no static weights; weight_shapes returns {}."""
+    op = make_op("matmul")
+    assert op.weight_shapes() == {}
+
+
+def test_linear_weight_shapes():
+    """Linear/FC weight_shapes returns weight and optional bias."""
+    op = make_op("linear", in_channel=64, out_channel=128, bias=True)
     shapes = op.weight_shapes(channel_last=False)
     assert shapes["weight"] == (128, 64)
     assert shapes["bias"] == (128,)
+
+
+def test_fc_weight_shapes():
+    """FC same weight_shapes as linear."""
+    op = make_op("fc", in_channel=32, out_channel=10, bias=False)
+    shapes = op.weight_shapes(channel_last=False)
+    assert shapes["weight"] == (10, 32)
+    assert shapes["bias"] is None
 
 
 def test_op_get_attrs():

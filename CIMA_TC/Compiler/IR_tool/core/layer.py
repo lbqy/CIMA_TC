@@ -144,12 +144,6 @@ class BaseLayer(Jsonable, RegistryMixin, RegistryEntry):
                 with ns_push(f"outputs[{name!r}]"):
                     yield name, dd
 
-    def to_json_obj(self, **kwargs: Any) -> Any:
-        result = super().to_json_obj(**kwargs)
-        if isinstance(result, dict) and getattr(self, "_outputs_implicit", False):
-            result = {k: v for k, v in result.items() if k != "outputs"}
-        return result
-
     def iter_weights(self) -> Iterator[Tuple[str, DataDef]]:
         if self.weights:
             for name, dd in self.weights.items():
@@ -173,10 +167,10 @@ class OpLayer(BaseLayer):
     def validate(self) -> None:
         super().validate()
 
-        # must have at least one input
         n = len(self.inputs or ())
 
-        if n != self.op.num_inputs:
+        # When num_inputs is None (e.g. Concat), allow variable inputs
+        if self.op.num_inputs is not None and n != self.op.num_inputs:
             raise ValidationError(f"Invalid number of inputs: {n}")
 
 
@@ -211,7 +205,6 @@ class GraphLayer(BaseLayer):
         for name, layer in self.layers.items():
             if not layer.outputs and not isinstance(layer, OutputLayer):
                 layer.outputs = [DataDef(ref=name)]
-                layer._outputs_implicit = True
             if layer.inputs:
                 for dd in layer.inputs:
                     if dd.ref is not None:
@@ -253,7 +246,6 @@ class GraphLayer(BaseLayer):
         added = self.layers[name]
         if not added.outputs and not isinstance(added, OutputLayer):
             added.outputs = [DataDef(ref=name)]
-            added._outputs_implicit = True
         if added.inputs:
             for dd in added.inputs:
                 if dd.ref is not None:
