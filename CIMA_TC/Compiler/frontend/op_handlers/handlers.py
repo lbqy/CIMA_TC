@@ -487,13 +487,16 @@ def _batch_norm(ir: Any, parser: Any, node_name: str) -> None:
     in_shape = dim_to_list(parser.value_infos[node.input[0]].type.tensor_type.shape.dim)
     ch = in_shape[1]
     eps = get_node_epsilon(node)
-    scale = _to_list(parser.weight_numpy.get(f"{node_name}.weight", [1.0]))
-    bias = _to_list(parser.weight_numpy.get(f"{node_name}.bias", [0.0]))
-    mean = _to_list(parser.weight_numpy.get(f"{node_name}.running_mean", [0.0]))
-    var = _to_list(parser.weight_numpy.get(f"{node_name}.running_var", [1.0]))
-    op = make_op("batch_norm2d", channel=ch, epsilon=float(eps), scale=scale, bias=bias, input_mean=mean, input_var=var)
+    # IR 只保留结构：channel + epsilon；scale/bias/running_mean/running_var 由 export_weights 单独导出
+    op = make_op("batch_norm2d", channel=ch, epsilon=float(eps))
     inputs, outputs = single_input_output(parser, node)
-    ir.add_layer(get_layer_name(parser, node_name), type="op", op=op, inputs=inputs, outputs=outputs)
+    bn_weights = {
+        "weight": {"shape": [ch]},
+        "bias": {"shape": [ch]},
+        "running_mean": {"shape": [ch]},
+        "running_var": {"shape": [ch]},
+    }
+    ir.add_layer(get_layer_name(parser, node_name), type="op", op=op, inputs=inputs, outputs=outputs, weights=bn_weights)
 
 
 @register_op("LayerNormalization")
@@ -501,11 +504,14 @@ def _layer_norm(ir: Any, parser: Any, node_name: str) -> None:
     node = parser.nodes[node_name]
     axis = get_axis(node)
     eps = get_node_epsilon(node)
-    scale = _to_list(parser.weight_numpy.get(f"{node_name}.weight", [1.0]))
-    bias = _to_list(parser.weight_numpy.get(f"{node_name}.bias", [0.0]))
-    op = make_op("layer_norm", axis=axis, epsilon=float(eps), scale=scale, bias=bias)
+    # IR 只保留结构：axis + epsilon；scale/bias 由 export_weights 单独导出
+    op = make_op("layer_norm", axis=axis, epsilon=float(eps))
     inputs, outputs = single_input_output(parser, node)
-    ir.add_layer(get_layer_name(parser, node_name), type="op", op=op, inputs=inputs, outputs=outputs)
+    # LayerNorm 的 weight/bias 维度依赖 normalized_shape，此处用 in_shape 推断
+    in_shape = dim_to_list(parser.value_infos[node.input[0]].type.tensor_type.shape.dim)
+    num_features = in_shape[axis] if -len(in_shape) <= axis < len(in_shape) else in_shape[-1]
+    ln_weights = {"weight": {"shape": [num_features]}, "bias": {"shape": [num_features]}}
+    ir.add_layer(get_layer_name(parser, node_name), type="op", op=op, inputs=inputs, outputs=outputs, weights=ln_weights)
 
 
 # ---------- Pad, Resize ----------

@@ -18,6 +18,7 @@ from CIMA_TC.Compiler.frontend import ConvertONNX, ConversionConfig
 ONNX_DIR = os.path.join(_SCRIPT_DIR, "CustomizedNet")
 ONNX_PATH = os.path.join(ONNX_DIR, "CustomizedNet.onnx")
 OUT_YAML = os.path.join(ONNX_DIR, "CustomizedNet_ir.yaml")
+OUT_WEIGHTS = os.path.join(ONNX_DIR, "CustomizedNet_weights.pt")
 
 
 def main() -> None:
@@ -37,6 +38,11 @@ def main() -> None:
     converter.dump(ir_file=OUT_YAML, as_yaml=True)
     print(f"IR (YAML) written: {OUT_YAML}")
     print(f"Layers: {len(ir.layers)}")
+
+    # weights and BN parameters are exported separately (IR only keeps structure)
+    converter.export_weights(OUT_WEIGHTS)
+    print(f"Weights (conv/fc/BN etc.) written: {OUT_WEIGHTS}")
+    # Usage: weights = torch.load(OUT_WEIGHTS)  # dict[str, Tensor], key is IR layer name.parameter name
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ from .attr_reader import (
     get_resize_mode,
 )
 from .onnx_io import load_onnx, save_onnx, add_value_info_for_constants
+from .weight_export import export_weights
 
 __all__ = [
     "dim_to_list",
@@ -39,4 +40,5 @@ __all__ = [
     "load_onnx",
     "save_onnx",
     "add_value_info_for_constants",
+    "export_weights",
 ]

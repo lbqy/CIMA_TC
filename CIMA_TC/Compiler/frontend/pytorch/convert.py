@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from CIMA_TC.Compiler.IR_tool.core.ir import BaseIR, save_ir
 from CIMA_TC.Compiler.IR_tool.core.jsonable import SerializationConfig
 
 from ..config import ConversionConfig
 from ..converter import ConvertONNX
+from ..utils.weight_export import export_weights as _export_weights_impl
 from .config import TorchConversionConfig
 
 
@@ -80,6 +81,7 @@ class ConvertTorch:
             }
             self.config = TorchConversionConfig(**{k: v for k, v in kwargs.items() if k in allowed})
         self.ir: Optional[BaseIR] = None
+        self._state_dict: Optional[Dict[str, Any]] = None
 
     def convert(
         self,
@@ -112,6 +114,8 @@ class ConvertTorch:
         )
         converter = ConvertONNX(onnx_config)
         self.ir = converter.convert(onnx_model=onnx_model)
+        import torch
+        self._state_dict = {k: v.clone() for k, v in model.state_dict().items()}
         return self.ir
 
     def dump(
@@ -131,3 +135,19 @@ class ConvertTorch:
             save_ir(self.ir, file=str(path), **kwargs)
             return None
         return save_ir(self.ir, **kwargs)
+
+    def export_weights(
+        self,
+        path: Union[str, Path],
+        state_dict: Optional[Dict[str, Any]] = None,
+        *,
+        format: Optional[str] = None,
+    ) -> None:
+        """
+        Export PyTorch state_dict (conv/fc weights, BN parameters, etc.) to a separate file.
+        format: None（按扩展名推断）/ "pt" / "npz" / "npy"（单数组时）。详见 utils.weight_export.export_weights。
+        """
+        sd = state_dict if state_dict is not None else self._state_dict
+        if sd is None:
+            raise RuntimeError("Run convert(model) first so state_dict is captured, or pass state_dict=...")
+        _export_weights_impl(sd, path, format=format)

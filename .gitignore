@@ -5,3 +5,17 @@ Miniconda3-latest-Linux-x86_64.sh
 
 # Jupyter notebooks (typically for debugging only)
 *.ipynb
+*.pt
+*.pth
+*.npz
+*.npy
+# *.onnx
+*.yaml
+*.json
+*.csv
+*.txt
+*.log
+*.err
+*.out
+*.err.log
+*.out.log

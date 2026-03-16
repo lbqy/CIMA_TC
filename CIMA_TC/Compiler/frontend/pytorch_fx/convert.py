@@ -13,6 +13,8 @@ import torch.fx
 from CIMA_TC.Compiler.IR_tool.core.ir import BaseIR, save_ir
 from CIMA_TC.Compiler.IR_tool.core.jsonable import SerializationConfig
 
+from CIMA_TC.Compiler.frontend.utils.weight_export import export_weights as _export_weights_impl
+
 from .config import FXConversionConfig
 from .handlers import FX_OP_HANDLERS
 from .shape_utils import get_shape_from_meta, shape_to_input_info, shape_to_output_info
@@ -265,6 +267,7 @@ class ConvertFX:
             allowed = {"example_input", "ir_file", "layer_name_prefix"}
             self.config = FXConversionConfig(**{k: v for k, v in kwargs.items() if k in allowed})
         self.ir: Optional[BaseIR] = None
+        self._state_dict: Optional[Dict[str, Any]] = None
 
     def convert(
         self,
@@ -282,6 +285,7 @@ class ConvertFX:
         # Trace
         gm = torch.fx.symbolic_trace(model)
         _run_shape_prop(gm, inp)
+        self._state_dict = {k: v.clone() for k, v in model.state_dict().items()}
 
         ctx = _FXContext(gm, prefix=cfg.layer_name_prefix)
         _collect_shapes(ctx)
@@ -388,3 +392,19 @@ class ConvertFX:
             save_ir(self.ir, file=str(path), **kwargs)
             return None
         return save_ir(self.ir, **kwargs)
+
+    def export_weights(
+        self,
+        path: Union[str, Path],
+        state_dict: Optional[Dict[str, Any]] = None,
+        *,
+        format: Optional[str] = None,
+    ) -> None:
+        """
+        Export PyTorch state_dict (conv/fc weights, BN parameters, etc.) to a separate file.
+        format: None（按扩展名推断）/ "pt" / "npz" / "npy"（单数组时）。详见 utils.weight_export.export_weights。
+        """
+        sd = state_dict if state_dict is not None else self._state_dict
+        if sd is None:
+            raise RuntimeError("Run convert(model) first so state_dict is captured, or pass state_dict=...")
+        _export_weights_impl(sd, path, format=format)

@@ -40,8 +40,9 @@ class BatchNormOp(UnaryOp):
             lower_limit=0,
             upper_limit=1.0
         )
-        self.set_attr('scale', scale if scale is not None else self.scale)
-        self.set_attr('bias', bias if bias is not None else self.bias)
+        # BN 参数不写入 IR，由 export_weights 单独导出；此处仅接受 None 或保留兼容旧 IR
+        self.set_attr('scale', scale)
+        self.set_attr('bias', bias)
         self.set_attr('input_mean', input_mean)
         self.set_attr('input_var', input_var)
 
@@ -149,5 +150,6 @@ class LayerNormOp(UnaryOp):
             lower_limit=0,
             upper_limit=1.0
         )
-        self.set_attr('scale', scale if scale is not None else self.scale)
-        self.set_attr('bias', bias if bias is not None else self.bias)
+        # LayerNorm 的 scale/bias 不写入 IR，由 export_weights 单独导出
+        self.set_attr('scale', scale)
+        self.set_attr('bias', bias)

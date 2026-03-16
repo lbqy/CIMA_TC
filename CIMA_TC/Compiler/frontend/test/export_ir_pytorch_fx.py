@@ -41,6 +41,7 @@ class SimpleCNN(nn.Module):
 
 OUT_DIR = os.path.join(_SCRIPT_DIR, "PyTorchFXExample")
 OUT_YAML = os.path.join(OUT_DIR, "SimpleCNN_fx_ir.yaml")
+OUT_WEIGHTS = os.path.join(OUT_DIR, "SimpleCNN_fx_weights.pt")
 
 
 def main() -> None:
@@ -59,6 +60,11 @@ def main() -> None:
     converter.dump()
     print(f"IR (YAML) written: {OUT_YAML}")
     print(f"Layers: {len(ir.layers)}")
+
+    # weights and BN parameters are exported separately (IR only keeps structure)
+    converter.export_weights(OUT_WEIGHTS)
+    print(f"State_dict written: {OUT_WEIGHTS}")
+    # Usage: state_dict = torch.load(OUT_WEIGHTS)  # PyTorch state_dict, key is module path
 
 
 if __name__ == "__main__":

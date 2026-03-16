@@ -41,6 +41,7 @@ class SimpleCNN(nn.Module):
 
 OUT_DIR = os.path.join(_SCRIPT_DIR, "PyTorchExample")
 OUT_YAML = os.path.join(OUT_DIR, "SimpleCNN_ir.yaml")
+OUT_WEIGHTS = os.path.join(OUT_DIR, "SimpleCNN_weights.pt")
 
 
 def main() -> None:
@@ -61,6 +62,11 @@ def main() -> None:
     converter.dump()
     print(f"IR (YAML) written: {OUT_YAML}")
     print(f"Layers: {len(ir.layers)}")
+
+    # 权重与 BN 等参数单独导出（IR 仅保留结构；PyTorch -> ONNX -> IR 路径导出 state_dict）
+    converter.export_weights(OUT_WEIGHTS)
+    print(f"State_dict written: {OUT_WEIGHTS}")
+    # 用法：state_dict = torch.load(OUT_WEIGHTS)  # PyTorch state_dict
 
 
 if __name__ == "__main__":

@@ -6,7 +6,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
+
+try:
+    import numpy as np
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
 
 from CIMA_TC.Compiler.IR_tool.core.ir import BaseIR, save_ir
 from CIMA_TC.Compiler.IR_tool.core.jsonable import SerializationConfig
@@ -17,6 +24,7 @@ from .preprocess import load_onnx_model
 from .utils.onnx_io import load_onnx
 from .utils.shape_utils import dim_to_list, get_input_info, get_output_info
 from .utils.name_sanitize import build_layer_name_map
+from .utils.weight_export import export_weights as _export_weights_impl
 from .op_handlers import get_handler, UnsupportedONNXOpError
 
 
@@ -72,7 +80,7 @@ class ConvertONNX:
                     parser.inputs.append(parser.nodes[sil].input[0])
             self._mark_redundant_pre(parser.inputs)
         else:
-            parser.inputs = list(parser.graph_input)
+            parser.inputs = list[str](parser.graph_input)
 
         if cfg.specify_output_layer:
             self._mark_redundant_post(parser, cfg.specify_output_layer)
@@ -119,7 +127,7 @@ class ConvertONNX:
                     for o in parser.nodes[ol].output:
                         output_names.append(o)
         else:
-            output_names = list(parser.graph_output)
+            output_names = list[str](parser.graph_output)
 
         g_outputs = []
         for out_name in output_names:
@@ -131,13 +139,13 @@ class ConvertONNX:
             ref_name = pred_list[0].name if pred_list and hasattr(pred_list[0], "name") else out_name
             ref_name = parser.name_map.get(ref_name, ref_name)
             if len(shape) == 4:
-                d = dict(ref=ref_name, channel=shape[1], height=shape[2], width=shape[3], channel_last=True)
+                d = dict[str, str | int](ref=ref_name, channel=shape[1], height=shape[2], width=shape[3], channel_last=True)
             elif len(shape) == 2:
-                d = dict(ref=ref_name, channel=shape[1], height=1, width=1, channel_last=True)
+                d = dict[str, str | int](ref=ref_name, channel=shape[1], height=1, width=1, channel_last=True)
             elif len(shape) == 3:
-                d = dict(ref=ref_name, channel=shape[0], height=shape[1], width=shape[2], channel_last=True)
+                d = dict[str, str | int](ref=ref_name, channel=shape[0], height=shape[1], width=shape[2], channel_last=True)
             else:
-                d = dict(ref=ref_name, shape=shape)
+                d = dict[str, str | List[int]](ref=ref_name, shape=shape)
             g_outputs.append(d)
         self.ir.add_layer("graph_output", type="output", inputs=g_outputs)
 
@@ -151,8 +159,8 @@ class ConvertONNX:
         parser = self.parser
         if not parser:
             return
-        queue = list(input_tensor_names)
-        seen = set(queue)
+        queue = list[str](input_tensor_names)
+        seen = set[str](queue)
         while queue:
             tensor_name = queue.pop(0)
             for pred in parser.predecessors.get(tensor_name, []):
@@ -215,3 +223,37 @@ class ConvertONNX:
             save_ir(self.ir, file=path, **kwargs)
             return None
         return save_ir(self.ir, **kwargs)
+
+    def export_weights(
+        self,
+        path: Union[str, Path],
+        *,
+        format: Optional[str] = None,
+    ) -> None:
+        """
+        Export conv/fc weights and BN parameters (from parser.weight_numpy) to a separate file.
+
+        - format 为 None：按 path 扩展名推断（.npz / .npy -> numpy，否则 .pt）。
+        - format "pt" / "npz" / "npy"：见 utils.weight_export.export_weights（.npy 仅支持单数组）。
+
+        Keys are mapped to IR layer names (e.g. "Conv_0.weight", "Conv_0.bias").
+        Load: .pt -> torch.load(path); .npz -> np.load(path) 得到 NpzFile，keys 为下划线版。
+        """
+        if self.parser is None:
+            raise RuntimeError("Run convert() first")
+        if not _TORCH_AVAILABLE:
+            raise RuntimeError("export_weights requires torch and numpy. Install: pip install torch")
+        name_map = getattr(self.parser, "name_map", {}) or {}
+        weight_numpy = self.parser.weight_numpy
+        out: Dict[str, Any] = {}
+        for key, arr in weight_numpy.items():
+            if "." not in key:
+                continue
+            node_name, suffix = key.rsplit(".", 1)
+            ir_name = name_map.get(node_name, node_name)
+            new_key = f"{ir_name}.{suffix}"
+            if hasattr(arr, "__array__"):
+                out[new_key] = np.asarray(arr)
+            else:
+                out[new_key] = arr
+        _export_weights_impl(out, path, format=format)
