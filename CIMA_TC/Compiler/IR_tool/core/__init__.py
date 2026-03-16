@@ -12,3 +12,5 @@ from .ref import NameSegment, get_ref, require_ref
 from .datadef import DataDef
 from .layer import BaseLayer, GraphLayer, BlockLayer, OpLayer, InputLayer, OutputLayer, make_layer
 from .ns import ns_push
+from .device import BaseDevice, DeviceTree, BaseRuntime, make_device
+from .ir import BaseIR, make_ir
