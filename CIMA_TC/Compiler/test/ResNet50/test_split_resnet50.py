@@ -15,6 +15,7 @@ from ...mapper.xb_split import XBConfig
 from ...mapper.split_pass import export_split_model
 from ...IR_tool.core.ir import BaseIR
 from ...IR_tool.core.visualize import to_dot, render_ir
+from ...backend.to_training_code.gen_code import gen_pytorch_model_script, gen_train_script
 
 
 def _shape_tuple(x) -> tuple:
@@ -84,6 +85,24 @@ def main() -> None:
             "To enable PDF rendering, install Graphviz and python-graphviz."
         ) from e
     assert os.path.isfile(pdf_out), f"Missing split graph PDF output: {pdf_out}"
+
+    # 3.6) Export a PyTorch model script (nn.Module) from split IR
+    model_py = os.path.join(script_dir, "resnet50_from_split_ir_model.py")
+    gen_pytorch_model_script(ir_path=split_ir_out, out_py=model_py, class_name="ResNet50SplitIR")
+    assert os.path.isfile(model_py), f"Missing generated model script: {model_py}"
+
+    # 3.7) Export a PyTorch training script from split IR + weights
+    train_py = os.path.join(script_dir, "train_resnet50_from_split_ir.py")
+    gen_train_script(
+        ir_path=split_ir_out,
+        weights_path=split_weights_pt,
+        out_py=train_py,
+        example_shape="1,3,224,224",
+        lr=1e-3,
+        steps=1,
+    )
+    assert os.path.isfile(train_py), f"Missing generated training script: {train_py}"
+    print(f"Generated training script: {train_py}")
 
     # 4) Verify: every op layer with weights has matching tensor in split weights
     import torch
