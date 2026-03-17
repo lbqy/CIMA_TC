@@ -21,3 +21,8 @@ class FXConversionConfig:
     example_input: Any = None
     ir_file: Optional[str] = None
     layer_name_prefix: str = ""
+
+    # Frontend IR rewrite passes (default enabled):
+    # - fuse Sigmoid+Mul -> Silu
+    # - rename BN to "{nearest_conv_or_fc}_bn"
+    enable_ir_rewrite: bool = True

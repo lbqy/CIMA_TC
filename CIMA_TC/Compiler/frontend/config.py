@@ -38,3 +38,8 @@ class ConversionConfig:
     data_range_specify: Optional[Any] = None
     data_clamp_std: float = 0.0
 
+    # Frontend IR rewrite passes (default enabled):
+    # - fuse Sigmoid+Mul -> Silu
+    # - rename BN to "{nearest_conv_or_fc}_bn"
+    enable_ir_rewrite: bool = True
+

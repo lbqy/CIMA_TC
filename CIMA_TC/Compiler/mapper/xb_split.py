@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Any
 
-from CIMA_TC.Compiler.IR_tool.core import BaseIR
+from ..IR_tool.core import BaseIR
 
 
 @dataclass

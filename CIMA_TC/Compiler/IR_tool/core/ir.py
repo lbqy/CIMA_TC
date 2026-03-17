@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
-from .jsonable import Jsonable, load_json, dump_json
+from .jsonable import Jsonable, load_json, dump_json, to_json_obj as _to_json_obj
 from .type_utils import to_typed_object
 from .layer import GraphLayer
 from .device import DeviceTree
@@ -83,6 +83,19 @@ class BaseIR(GraphLayer, DeviceTree, Jsonable):
         if ir_version is None:
             ir_version = self.ir_version
         self.set_attr("ir_version", ir_version, not_none=True)
+
+        # Runtime-only parameter stores (NOT serialized by dump_json/save_ir).
+        # Frontend can attach real weights / BN params here for later mapping passes.
+        self.weight_store: dict[str, Any] = {}
+        self.bn_store: dict[str, Any] = {}
+
+    # Jsonable override: exclude runtime-only stores from serialization
+    def to_json_obj(self, config: Any = None, _ids: Any = None) -> Any:  # type: ignore[override]
+        """
+        Serialize BaseIR while excluding runtime-only fields such as weight_store/bn_store.
+        """
+        data = {k: v for k, v in self.__dict__.items() if k not in ("weight_store", "bn_store")}
+        return _to_json_obj(data, config=config, _ids=_ids)
 
 
 def save_ir(ir: BaseIR, *, file: Optional[Any] = None, **kwargs: Any) -> Optional[str]:

@@ -33,3 +33,8 @@ class TorchConversionConfig:
     do_constant_folding: bool = True
     input_names: Optional[List[str]] = None
     output_names: Optional[List[str]] = None
+
+    # Frontend IR rewrite passes (default enabled):
+    # - fuse Sigmoid+Mul -> Silu
+    # - rename BN to "{nearest_conv_or_fc}_bn"
+    enable_ir_rewrite: bool = True

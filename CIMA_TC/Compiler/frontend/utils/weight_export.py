@@ -66,7 +66,11 @@ def export_weights(
             if hasattr(v, "numpy"):
                 out[k] = v if v.is_cuda else v.clone()
             elif hasattr(v, "__array__"):
-                out[k] = torch.from_numpy(np.asarray(v)).clone()
+                # Use a writable copy so torch.from_numpy does not warn (read-only arrays).
+                a = np.asarray(v)
+                if not a.flags.writeable:
+                    a = a.copy()
+                out[k] = torch.from_numpy(a).clone()
             else:
                 out[k] = v
         torch.save(out, path_str)

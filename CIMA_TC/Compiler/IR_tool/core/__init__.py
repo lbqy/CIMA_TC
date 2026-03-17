@@ -14,3 +14,4 @@ from .layer import BaseLayer, GraphLayer, BlockLayer, OpLayer, InputLayer, Outpu
 from .ns import ns_push
 from .device import BaseDevice, DeviceTree, BaseRuntime, make_device
 from .ir import BaseIR, make_ir
+from .visualize import to_dot, render_ir

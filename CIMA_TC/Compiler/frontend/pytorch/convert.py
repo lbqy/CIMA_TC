@@ -111,6 +111,7 @@ class ConvertTorch:
             ir_file=cfg.ir_file,
             fix_layer_name=cfg.fix_layer_name,
             store_intermediate_model=cfg.store_intermediate_model,
+            enable_ir_rewrite=getattr(cfg, "enable_ir_rewrite", True),
         )
         converter = ConvertONNX(onnx_config)
         self.ir = converter.convert(onnx_model=onnx_model)

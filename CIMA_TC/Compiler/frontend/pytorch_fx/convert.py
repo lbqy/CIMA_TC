@@ -14,6 +14,7 @@ from CIMA_TC.Compiler.IR_tool.core.ir import BaseIR, save_ir
 from CIMA_TC.Compiler.IR_tool.core.jsonable import SerializationConfig
 
 from CIMA_TC.Compiler.frontend.utils.weight_export import export_weights as _export_weights_impl
+from CIMA_TC.Compiler.frontend.utils.ir_rewrite import fuse_sigmoid_mul_to_silu, rename_batchnorm_layers
 
 from .config import FXConversionConfig
 from .handlers import FX_OP_HANDLERS
@@ -372,6 +373,11 @@ class ConvertFX:
                 else:
                     g_outputs.append(dict(ref="", shape=[]))
             self.ir.add_layer("graph_output", type="output", inputs=g_outputs)
+
+        # Frontend-shared rewrites (default enabled)
+        if getattr(self.config, "enable_ir_rewrite", True):
+            fuse_sigmoid_mul_to_silu(self.ir)
+            rename_batchnorm_layers(self.ir)
 
         return self.ir
 

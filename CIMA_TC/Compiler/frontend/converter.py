@@ -16,12 +16,14 @@ except ImportError:
     _TORCH_AVAILABLE = False
 
 from CIMA_TC.Compiler.IR_tool.core.ir import BaseIR, save_ir
+from CIMA_TC.Compiler.IR_tool.core import DataDef, OpLayer, make_op
 from CIMA_TC.Compiler.IR_tool.core.jsonable import SerializationConfig
 
 from .config import ConversionConfig
 from .parser import OnnxParser
 from .preprocess import load_onnx_model
 from .utils.onnx_io import load_onnx
+from .utils.ir_rewrite import fuse_sigmoid_mul_to_silu, rename_batchnorm_layers
 from .utils.shape_utils import dim_to_list, get_input_info, get_output_info
 from .utils.name_sanitize import build_layer_name_map
 from .utils.weight_export import export_weights as _export_weights_impl
@@ -152,7 +154,42 @@ class ConvertONNX:
         # Remove dead op layers (no successor)
         self._remove_redundant_layers()
 
+        # Optional frontend IR rewrite passes (default enabled)
+        if getattr(cfg, "enable_ir_rewrite", True):
+            # Pattern: Y = Mul(X, Sigmoid(X)) -> Silu(X)
+            self._fuse_sigmoid_mul_to_silu()
+            # Rename BN to "{nearest_conv_or_fc}_bn" and update parser.name_map
+            self._rename_batchnorm_layers()
+
+        # Attach runtime-only weight/BN stores onto IR for later mapping passes.
+        # These are not serialized by dump(), so they will not affect readability.
+        if self.ir is not None and self.parser is not None:
+            name_map = getattr(self.parser, "name_map", {}) or {}
+            ws = getattr(self.ir, "weight_store", None)
+            bs = getattr(self.ir, "bn_store", None)
+            if isinstance(ws, dict) and isinstance(bs, dict):
+                for key, arr in self.parser.weight_numpy.items():
+                    if "." not in key:
+                        continue
+                    node_name, suffix = key.rsplit(".", 1)
+                    ir_name = name_map.get(node_name, node_name)
+                    new_key = f"{ir_name}.{suffix}"
+                    if suffix in ("running_mean", "running_var"):
+                        bs[new_key] = arr
+                    else:
+                        ws[new_key] = arr
+
         return self.ir
+
+    def _fuse_sigmoid_mul_to_silu(self) -> None:
+        if self.ir is None:
+            return
+        fuse_sigmoid_mul_to_silu(self.ir, name_map=getattr(self.parser, "name_map", None))
+
+    def _rename_batchnorm_layers(self) -> None:
+        if self.ir is None:
+            return
+        rename_batchnorm_layers(self.ir, name_map=getattr(self.parser, "name_map", None))
 
     def _mark_redundant_pre(self, input_tensor_names: List[str]) -> None:
         """Mark nodes that are predecessors of the given input tensors (traverse backward)."""
