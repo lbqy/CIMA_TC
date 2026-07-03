@@ -56,7 +56,7 @@ def compute_conv_fc_split_plan(
         flattened -> [kh * kw * in_c, out_c]
 
     For fc:
-        weight_shape = [out_c, in_c] (or [rows, cols]); we treat it as [rows, cols].
+        weight_shape = [out_c, in_c], flattened -> [in_c, out_c].
 
     Returns:
         (row_splits, col_splits)
@@ -70,7 +70,9 @@ def compute_conv_fc_split_plan(
     else:
         if len(weight_shape) != 2:
             raise ValueError(f"Expected fc weight shape [out_c, in_c], got {weight_shape}")
-        rows, cols = weight_shape
+        out_c, in_c = weight_shape
+        rows = in_c
+        cols = out_c
 
     row_splits = _split_ceil(rows, xb.max_rows)
     col_splits = _split_ceil(cols, xb.max_cols)

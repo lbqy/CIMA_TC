@@ -1,5 +1,5 @@
 """
-Parse ResNet50.onnx and export IR to YAML.
+Parse resnet50.onnx and export IR to YAML.
 Run from repo root: python -m CIMA_TC.Compiler.test.ResNet50.export_ir_resnet50
 Or from this directory: python export_ir_resnet50.py
 """
@@ -11,7 +11,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 from ...frontend import ConvertONNX, ConversionConfig
 
-ONNX_PATH = os.path.join(_SCRIPT_DIR, "ResNet50.onnx")
+ONNX_PATH = os.path.join(_SCRIPT_DIR, "resnet50.onnx")
 OUT_YAML = os.path.join(_SCRIPT_DIR, "ResNet50_ir.yaml")
 
 

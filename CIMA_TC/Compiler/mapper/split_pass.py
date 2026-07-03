@@ -329,8 +329,13 @@ def split_model_for_xb(
         w_arr = np.asarray(w_arr)
         b_arr = weight_store.get(b_key, None)
 
-        # For linear, weight_store layout is (out_c, in_c) after parser transpose; slice by actual array shape.
+        # Linear weights may arrive as (in_c, out_c) from ONNX Gemm; normalize to (out_c, in_c).
         if op_id == "linear" and w_arr.ndim == 2:
+            op_attr = getattr(layer, "op", None)
+            op_in = int(getattr(op_attr, "in_channel", 0) or 0)
+            op_out = int(getattr(op_attr, "out_channel", 0) or 0)
+            if op_in and op_out and tuple(w_arr.shape) == (op_in, op_out):
+                w_arr = w_arr.T.copy()
             total_out_c = int(w_arr.shape[0])
             total_in_c = int(w_arr.shape[1])
             col_ranges = _split_ranges(total_out_c, col_splits)
@@ -365,6 +370,8 @@ def split_model_for_xb(
                 if b_arr is not None:
                     b_np = np.asarray(b_arr)
                     b_cell = b_np[out_s:out_e].copy()
+                    if row_splits > 1:
+                        b_cell = b_cell / float(row_splits)
                 row_list.append((w_cell, b_cell))
             grid_weights.append(row_list)
 
@@ -409,6 +416,12 @@ def split_model_for_xb(
                 out_chunk = col_ranges[cj][1] - col_ranges[cj][0]
 
                 child_layer = layer.clone()
+                child_op = getattr(child_layer, "op", None)
+                if child_op is not None:
+                    if hasattr(child_op, "in_channel"):
+                        child_op.in_channel = in_chunk
+                    if hasattr(child_op, "out_channel"):
+                        child_op.out_channel = out_chunk
                 if child_layer.outputs and len(child_layer.outputs) == 1:
                     dd = child_layer.outputs[0]
                     if getattr(dd, "channel", None) is not None:

@@ -1,14 +1,17 @@
 """
 Auto-generated training script from IR.
 
-IR: C:\Users\LvBuQY\CIMA_TC\CIMA_TC\Compiler\test\ResNet50\ResNet50_split_ir.yaml
-Weights: C:\Users\LvBuQY\CIMA_TC\CIMA_TC\Compiler\test\ResNet50\ResNet50_split_weights.pt
+IR: ResNet50_split_ir.yaml
+Weights: ResNet50_split_weights.pt
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import torch
 
+import CIMA_TC.Compiler.IR_tool.ops  # Registers built-in op classes for IR loading.
 from CIMA_TC.Compiler.IR_tool.core.ir import BaseIR
 from CIMA_TC.Compiler.backend.to_training_code.ir_to_torch import (
     build_torch_model_from_ir,
@@ -24,11 +27,14 @@ def _parse_shape(s: str):
     return parts
 
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+
+
 def main():
-    ir = BaseIR.load_ir(file='C:\\Users\\LvBuQY\\CIMA_TC\\CIMA_TC\\Compiler\\test\\ResNet50\\ResNet50_split_ir.yaml')
+    ir = BaseIR.load_ir(file=str(_SCRIPT_DIR / 'ResNet50_split_ir.yaml'))
     built = build_torch_model_from_ir(ir)
     model = built.model
-    weights = load_weights_file('C:\\Users\\LvBuQY\\CIMA_TC\\CIMA_TC\\Compiler\\test\\ResNet50\\ResNet50_split_weights.pt')
+    weights = load_weights_file(str(_SCRIPT_DIR / 'ResNet50_split_weights.pt'))
     load_weights_into_model(model, weights, module_name_map=built.module_name_map, strict=False)
 
     model.train()

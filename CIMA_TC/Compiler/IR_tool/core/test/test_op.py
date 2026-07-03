@@ -28,21 +28,21 @@ from ..op import (
 # ============================================================
 
 class Add(BinaryOp):
-    op_id = "add"
+    op_id = "test_add"
 
     def execute(self, a, b):
         return a + b
 
 
 class Sub(BinaryOp):
-    op_id = "sub"
+    op_id = "test_sub"
 
     def execute(self, a, b):
         return a - b
 
 
 class Neg(UnaryOp):
-    op_id = "neg"
+    op_id = "test_neg"
 
     def execute(self, a):
         return -a
@@ -57,9 +57,9 @@ def test_registry_initialized():
 
 
 def test_concrete_ops_registered():
-    assert "add" in BaseOp._registry
-    assert "sub" in BaseOp._registry
-    assert "neg" in BaseOp._registry
+    assert "test_add" in BaseOp._registry
+    assert "test_sub" in BaseOp._registry
+    assert "test_neg" in BaseOp._registry
 
 def test_abstract_classes_not_registered():
     assert "unaryop" not in BaseOp._registry
@@ -68,9 +68,9 @@ def test_abstract_classes_not_registered():
 
 def test_registry_keys_lowercase():
     """Registered keys are stored in lowercase."""
-    assert "add" in BaseOp._registry
-    assert "ADD" not in BaseOp._registry
-    assert BaseOp.lookup("ADD") is Add
+    assert "test_add" in BaseOp._registry
+    assert "TEST_ADD" not in BaseOp._registry
+    assert BaseOp.lookup("TEST_ADD") is Add
 
 # ============================================================
 # enum_op_ids
@@ -78,9 +78,9 @@ def test_registry_keys_lowercase():
 
 def test_enum_op_ids():
     ids = list(enum_op_ids())
-    assert "add" in ids
-    assert "sub" in ids
-    assert "neg" in ids
+    assert "test_add" in ids
+    assert "test_sub" in ids
+    assert "test_neg" in ids
 
 
 def test_enum_op_ids_consistency_with_registry():
@@ -94,13 +94,13 @@ def test_enum_op_ids_consistency_with_registry():
 # ============================================================
 
 def test_make_op_from_string():
-    op = make_op("add")
+    op = make_op("test_add")
     assert isinstance(op, Add)
     assert op.execute(3, 4) == 7
 
 
 def test_make_op_string_case_insensitive():
-    op = make_op("ADD")
+    op = make_op("TEST_ADD")
     assert isinstance(op, Add)
 
 
@@ -109,14 +109,14 @@ def test_make_op_string_case_insensitive():
 # ============================================================
 
 def test_make_op_from_mapping():
-    op = make_op({"op_id": "sub"})
+    op = make_op({"op_id": "test_sub"})
     assert isinstance(op, Sub)
     assert op.execute(5, 2) == 3
 
 
 def test_make_op_mapping_with_extra_fields():
     class Mul(BinaryOp):
-        op_id = "mul"
+        op_id = "test_mul"
 
         def __init__(self, *, op_id=None, scale=1):
             super().__init__(op_id=op_id)
@@ -125,13 +125,13 @@ def test_make_op_mapping_with_extra_fields():
         def execute(self, a, b):
             return (a * b) * self.scale
 
-    op = make_op({"op_id": "mul", "scale": 10})
+    op = make_op({"op_id": "test_mul", "scale": 10})
     assert op.execute(2, 3) == 60
 
 
 def test_make_op_mapping_missing_key():
     with pytest.raises(ValueError):
-        make_op({"wrong_key": "add"})
+        make_op({"wrong_key": "test_add"})
 
 
 # ============================================================
@@ -147,7 +147,7 @@ def test_make_op_existing_instance():
 def test_make_op_existing_instance_with_kwargs_fails():
     original = Add()
     with pytest.raises(ValueError):
-        make_op(original, op_id="add")
+        make_op(original, op_id="test_add")
 
 
 # ============================================================
@@ -159,7 +159,7 @@ def test_make_op_none_returns_none():
 
 
 def test_make_op_none_with_kwargs():
-    op = make_op(None, op_id="add")
+    op = make_op(None, op_id="test_add")
     assert isinstance(op, Add)
 
 
@@ -175,13 +175,13 @@ def test_make_op_none_no_kwargs_returns_none():
 def test_validation_called():
 
     class BadOp(BaseOp):
-        op_id = "bad"
+        op_id = "test_bad"
 
         def validate(self):
             raise ValueError("Invalid op")
 
     with pytest.raises(ValueError):
-        make_op("bad")
+        make_op("test_bad")
 
 
 def test_make_op_invalid_key_raises():
@@ -196,13 +196,13 @@ def test_make_op_invalid_key_raises():
 
 def test_num_inputs_unary():
     """UnaryOp has num_inputs = 1."""
-    op = make_op("neg")
+    op = make_op("test_neg")
     assert op.num_inputs == 1
 
 
 def test_num_inputs_binary():
     """BinaryOp has num_inputs = 2."""
-    op = make_op("add")
+    op = make_op("test_add")
     assert op.num_inputs == 2
 
 
@@ -213,7 +213,7 @@ def test_num_inputs_binary():
 def test_get_attrs():
 
     class AttrOp(UnaryOp):
-        op_id = "attr_op"
+        op_id = "test_attr_op"
         attrs = ("x", "y")
 
         def __init__(self, *, op_id=None, x=1, y=2):
@@ -221,24 +221,24 @@ def test_get_attrs():
             self.x = x
             self.y = y
 
-    op = make_op({"op_id": "attr_op", "x": 10, "y": 20})
+    op = make_op({"op_id": "test_attr_op", "x": 10, "y": 20})
     attrs = op.get_attrs()
 
     assert attrs == {"x": 10, "y": 20}
 
 
 def test_weight_shapes_default():
-    op = make_op("add")
+    op = make_op("test_add")
     assert op.weight_shapes() == {}
 
 
 def test_weight_shapes_not_implemented():
 
     class WeightOp(BaseOp):
-        op_id = "weight_op"
+        op_id = "test_weight_op"
         weights = ("w",)
 
-    op = make_op("weight_op")
+    op = make_op("test_weight_op")
 
     with pytest.raises(NotImplementedError):
         op.weight_shapes()
@@ -252,7 +252,7 @@ def test_duplicate_op_id_raises():
     with pytest.raises(ValueError):
 
         class DuplicateOp(BaseOp):
-            op_id = "add"
+            op_id = "test_add"
 
 
 # ============================================================
@@ -275,11 +275,11 @@ def test_registry_isolation():
 
 def test_get_attrs_empty():
     """get_attrs returns empty dict when attrs is empty."""
-    op = make_op("add")
+    op = make_op("test_add")
     assert op.get_attrs() == {}
 
 
 def test_make_op_from_dict_merge_kwargs():
     """Extra kwargs merge with dict source."""
-    op = make_op({"op_id": "add"}, op_id="add")
+    op = make_op({"op_id": "test_add"}, op_id="test_add")
     assert isinstance(op, Add)

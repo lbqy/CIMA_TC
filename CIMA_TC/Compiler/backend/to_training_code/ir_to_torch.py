@@ -70,6 +70,22 @@ def _dd_shape_tuple(dd: Optional[DataDef]) -> Optional[Tuple[int, ...]]:
     return (c, int(h), int(w))
 
 
+def _layer_weight_shape(layer: Any, name: str = "weight") -> Optional[Tuple[int, ...]]:
+    weights = getattr(layer, "weights", None) or {}
+    spec = weights.get(name)
+    shape = getattr(spec, "shape", None)
+    if not shape:
+        return None
+    try:
+        return tuple(int(x) for x in shape)
+    except Exception:
+        return None
+
+
+def _layer_has_weight(layer: Any, name: str) -> bool:
+    return name in (getattr(layer, "weights", None) or {})
+
+
 @dataclass
 class BuildResult:
     model: nn.Module
@@ -106,14 +122,20 @@ class IRModule(nn.Module):
             key = _safe_module_key(name)
 
             if op_id == "conv2d":
-                in_ch = int(getattr(op, "in_channel"))
-                out_ch = int(getattr(op, "out_channel"))
-                k = int(getattr(op, "kernel"))
-                stride = int(getattr(op, "stride", 1))
-                padding = int(getattr(op, "padding", 0))
-                dilation = int(getattr(op, "dilation", 1))
                 groups = int(getattr(op, "groups", getattr(op, "group", 1)))
-                bias = bool(getattr(op, "bias", False))
+                w_shape = _layer_weight_shape(layer)
+                if w_shape and len(w_shape) >= 4:
+                    out_ch = int(w_shape[0])
+                    in_ch = int(w_shape[1]) * groups
+                    k = tuple(int(v) for v in w_shape[2:4])
+                else:
+                    in_ch = int(getattr(op, "in_channel"))
+                    out_ch = int(getattr(op, "out_channel"))
+                    k = _as_tuple2(getattr(op, "kernel"))
+                stride = _as_tuple2(getattr(op, "stride", 1))
+                padding = _as_tuple2(getattr(op, "padding", 0))
+                dilation = _as_tuple2(getattr(op, "dilation", 1))
+                bias = _layer_has_weight(layer, "bias") or bool(getattr(op, "bias", False))
                 self.mods[key] = nn.Conv2d(
                     in_channels=in_ch,
                     out_channels=out_ch,
@@ -127,14 +149,24 @@ class IRModule(nn.Module):
                 self._name_map[name] = key
 
             elif op_id == "linear":
-                in_ch = int(getattr(op, "in_channel"))
-                out_ch = int(getattr(op, "out_channel"))
-                bias = bool(getattr(op, "bias", False))
+                w_shape = _layer_weight_shape(layer)
+                if w_shape and len(w_shape) >= 2:
+                    out_ch = int(w_shape[0])
+                    in_ch = int(w_shape[1])
+                else:
+                    in_ch = int(getattr(op, "in_channel"))
+                    out_ch = int(getattr(op, "out_channel"))
+                bias = _layer_has_weight(layer, "bias") or bool(getattr(op, "bias", False))
                 self.mods[key] = nn.Linear(in_features=in_ch, out_features=out_ch, bias=bias)
                 self._name_map[name] = key
 
             elif op_id in ("batch_norm", "batch_norm1d", "batch_norm2d", "batch_norm3d"):
-                ch = int(getattr(op, "channel"))
+                ch_shape = (
+                    _layer_weight_shape(layer)
+                    or _layer_weight_shape(layer, "bias")
+                    or _layer_weight_shape(layer, "running_mean")
+                )
+                ch = int(ch_shape[0]) if ch_shape else int(getattr(op, "channel"))
                 eps = float(getattr(op, "epsilon", 1e-5))
                 # Use BatchNorm2d as default (IR is primarily CNN)
                 self.mods[key] = nn.BatchNorm2d(num_features=ch, eps=eps, affine=True, track_running_stats=True)
@@ -210,6 +242,27 @@ class IRModule(nn.Module):
                 cache[name] = torch.sigmoid(xs[0])
             elif op_id == "silu":
                 cache[name] = F.silu(xs[0])
+            elif op_id == "max_pool2d":
+                k = _as_tuple2(getattr(op, "kernel", 2))
+                stride = _as_tuple2(getattr(op, "stride", k))
+                padding = _as_tuple2(getattr(op, "padding", 0))
+                cache[name] = F.max_pool2d(xs[0], kernel_size=k, stride=stride, padding=padding)
+            elif op_id == "avg_pool2d":
+                k = _as_tuple2(getattr(op, "kernel", 2))
+                stride = _as_tuple2(getattr(op, "stride", k))
+                padding = _as_tuple2(getattr(op, "padding", 0))
+                cache[name] = F.avg_pool2d(xs[0], kernel_size=k, stride=stride, padding=padding)
+            elif op_id == "global_avg_pool2d":
+                cache[name] = F.adaptive_avg_pool2d(xs[0], output_size=(1, 1))
+            elif op_id == "global_max_pool2d":
+                cache[name] = F.adaptive_max_pool2d(xs[0], output_size=(1, 1))
+            elif op_id == "split":
+                axis = int(getattr(op, "axis", 1))
+                split = getattr(op, "split", None)
+                if split is None:
+                    raise ValueError(f"split layer {name} missing split attr")
+                sizes = list(split) if isinstance(split, (list, tuple)) else [int(split)]
+                cache[name] = list(torch.split(xs[0], sizes, dim=axis))
             elif op_id == "mul":
                 cache[name] = xs[0] * xs[1]
             elif op_id == "add":
@@ -261,9 +314,15 @@ def load_weights_into_model(
             return None
         mods = getattr(model, "mods")
         key = module_name_map.get(layer_name, _safe_module_key(layer_name))
-        return mods.get(key) if hasattr(mods, "get") else mods[key]
+        if key not in mods:
+            return None
+        return mods[key]
 
     missing: List[str] = []
+
+    def handle_shape_mismatch(message: str) -> None:
+        if strict:
+            raise ValueError(message)
 
     for k, v in weights.items():
         if "." not in k:
@@ -288,21 +347,21 @@ def load_weights_into_model(
                     elif isinstance(mod, nn.Linear) and t.t().shape == dst.shape:
                         dst.copy_(t.t().to(dst.dtype))
                     else:
-                        raise ValueError(f"Weight shape mismatch for {k}: got {tuple(t.shape)}, expected {tuple(dst.shape)}")
+                        handle_shape_mismatch(f"Weight shape mismatch for {k}: got {tuple(t.shape)}, expected {tuple(dst.shape)}")
             elif suffix == "bias":
                 if hasattr(mod, "bias") and mod.bias is not None:
                     dst = mod.bias.data
                     if t.shape == dst.shape:
                         dst.copy_(t.to(dst.dtype))
                     else:
-                        raise ValueError(f"Bias shape mismatch for {k}: got {tuple(t.shape)}, expected {tuple(dst.shape)}")
+                        handle_shape_mismatch(f"Bias shape mismatch for {k}: got {tuple(t.shape)}, expected {tuple(dst.shape)}")
             elif suffix in ("running_mean", "running_var"):
                 if hasattr(mod, suffix):
                     buf = getattr(mod, suffix)
                     if t.shape == buf.shape:
                         buf.copy_(t.to(buf.dtype))
                     else:
-                        raise ValueError(f"{suffix} shape mismatch for {k}: got {tuple(t.shape)}, expected {tuple(buf.shape)}")
+                        handle_shape_mismatch(f"{suffix} shape mismatch for {k}: got {tuple(t.shape)}, expected {tuple(buf.shape)}")
             else:
                 # ignore unknown
                 continue

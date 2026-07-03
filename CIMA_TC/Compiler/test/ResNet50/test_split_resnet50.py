@@ -28,7 +28,7 @@ def _shape_tuple(x) -> tuple:
 def main() -> None:
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    onnx_path = os.path.join(script_dir, "ResNet50.onnx")
+    onnx_path = os.path.join(script_dir, "resnet50.onnx")
     ir_out = os.path.join(script_dir, "ResNet50_ir.yaml")
 
     split_ir_out = os.path.join(script_dir, "ResNet50_split_ir.yaml")

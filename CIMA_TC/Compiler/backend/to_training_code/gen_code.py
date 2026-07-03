@@ -8,6 +8,22 @@ def _safe_name(name: str) -> str:
     return name.replace(".", "_").replace("-", "_")
 
 
+def _weight_shape(layer: Any, name: str = "weight") -> Optional[Tuple[int, ...]]:
+    weights = getattr(layer, "weights", None) or {}
+    spec = weights.get(name)
+    shape = getattr(spec, "shape", None)
+    if not shape:
+        return None
+    try:
+        return tuple(int(x) for x in shape)
+    except Exception:
+        return None
+
+
+def _has_weight(layer: Any, name: str) -> bool:
+    return name in (getattr(layer, "weights", None) or {})
+
+
 def gen_pytorch_model_script(
     *,
     ir_path: str | Path,
@@ -88,29 +104,42 @@ def gen_pytorch_model_script(
             out_vars = [var_map[name]]
 
         if op_id == "conv2d":
-            in_ch = int(getattr(op, "in_channel"))
-            out_ch = int(getattr(op, "out_channel"))
-            k = int(getattr(op, "kernel", 3))
+            groups = int(getattr(op, "groups", getattr(op, "group", 1)))
+            w_shape = _weight_shape(layer)
+            if w_shape and len(w_shape) >= 4:
+                out_ch = int(w_shape[0])
+                in_ch = int(w_shape[1]) * groups
+                k_tuple = tuple(int(v) for v in w_shape[2:4])
+                k = k_tuple[0] if k_tuple[0] == k_tuple[1] else k_tuple
+            else:
+                in_ch = int(getattr(op, "in_channel"))
+                out_ch = int(getattr(op, "out_channel"))
+                k = int(getattr(op, "kernel", 3))
             stride = int(getattr(op, "stride", 1))
             pad = int(getattr(op, "padding", 0))
             dil = int(getattr(op, "dilation", 1))
-            groups = int(getattr(op, "groups", getattr(op, "group", 1)))
-            bias = bool(getattr(op, "bias", False))
+            bias = _has_weight(layer, "bias") or bool(getattr(op, "bias", False))
             init_lines.append(
-                f"self.{name} = nn.Conv2d({in_ch}, {out_ch}, {k}, {stride}, {pad}, dilation={dil}, groups={groups}, bias={bias})"
+                f"self.{name} = nn.Conv2d({in_ch}, {out_ch}, {k!r}, {stride}, {pad}, dilation={dil}, groups={groups}, bias={bias})"
             )
             fwd_lines.append(f"{out_vars[0]} = self.{name}({in_vars[0]})")
 
         elif op_id in ("batch_norm", "batch_norm1d", "batch_norm2d", "batch_norm3d"):
-            ch = int(getattr(op, "channel"))
+            ch_shape = _weight_shape(layer) or _weight_shape(layer, "bias") or _weight_shape(layer, "running_mean")
+            ch = int(ch_shape[0]) if ch_shape else int(getattr(op, "channel"))
             eps = float(getattr(op, "epsilon", 1e-5))
             init_lines.append(f"self.{name} = nn.BatchNorm2d({ch}, eps={eps})")
             fwd_lines.append(f"{out_vars[0]} = self.{name}({in_vars[0]})")
 
         elif op_id == "linear":
-            in_ch = int(getattr(op, "in_channel"))
-            out_ch = int(getattr(op, "out_channel"))
-            bias = bool(getattr(op, "bias", False))
+            w_shape = _weight_shape(layer)
+            if w_shape and len(w_shape) >= 2:
+                out_ch = int(w_shape[0])
+                in_ch = int(w_shape[1])
+            else:
+                in_ch = int(getattr(op, "in_channel"))
+                out_ch = int(getattr(op, "out_channel"))
+            bias = _has_weight(layer, "bias") or bool(getattr(op, "bias", False))
             init_lines.append(f"self.{name} = nn.Linear({in_ch}, {out_ch}, bias={bias})")
             fwd_lines.append(f"{out_vars[0]} = self.{name}({in_vars[0]})")
 
@@ -222,17 +251,32 @@ def gen_train_script(
     weights_path = str(weights_path)
     out_py = str(out_py)
 
+    out_dir = Path(out_py).resolve().parent
+
+    def script_local_path(path_value: str) -> str:
+        path = Path(path_value)
+        try:
+            return str(path.resolve().relative_to(out_dir))
+        except ValueError:
+            return str(path)
+
+    ir_ref = script_local_path(ir_path)
+    weights_ref = script_local_path(weights_path)
+
     code = f'''"""
 Auto-generated training script from IR.
 
-IR: {ir_path}
-Weights: {weights_path}
+IR: {ir_ref}
+Weights: {weights_ref}
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import torch
 
+import CIMA_TC.Compiler.IR_tool.ops  # Registers built-in op classes for IR loading.
 from CIMA_TC.Compiler.IR_tool.core.ir import BaseIR
 from CIMA_TC.Compiler.backend.to_training_code.ir_to_torch import (
     build_torch_model_from_ir,
@@ -248,11 +292,14 @@ def _parse_shape(s: str):
     return parts
 
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+
+
 def main():
-    ir = BaseIR.load_ir(file={ir_path!r})
+    ir = BaseIR.load_ir(file=str(_SCRIPT_DIR / {ir_ref!r}))
     built = build_torch_model_from_ir(ir)
     model = built.model
-    weights = load_weights_file({weights_path!r})
+    weights = load_weights_file(str(_SCRIPT_DIR / {weights_ref!r}))
     load_weights_into_model(model, weights, module_name_map=built.module_name_map, strict=False)
 
     model.train()

@@ -1,75 +1,53 @@
-"""
-Shape and IR input/output helpers.
-Converts ONNX value_info dims to lists and builds IR-style input/output dicts.
-"""
+"""Helpers for converting framework tensor shapes into IR metadata dicts."""
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Sequence
 
 
 def dim_to_list(dim: Any) -> List[int]:
-    """
-    Convert ONNX ValueInfoProto shape dim to list of int (dim_value).
-    """
+    """Convert an ONNX shape dim sequence to a list of integer dim values."""
     return [int(d.dim_value) for d in dim]
 
 
-def get_input_info(input_shape: List[int], ref_name: str) -> dict[str, Any]:
+def tensor_info_from_shape(shape: Sequence[int], *, ref: Optional[str] = None) -> dict[str, Any]:
     """
-    Build one IR input spec dict for a layer (ref + optional channel/height/width).
-    Used when adding a layer that consumes one tensor from ref_name.
+    Build a DataDef-compatible dict from a tensor shape.
+
+    The current IR tracks NCHW-like tensors as channel/height/width metadata and
+    falls back to a raw `shape` field for ranks outside the common cases.
     """
-    if len(input_shape) == 4:
-        # NCHW or NHWC; assume channel_last=True means last is channel
-        return dict(
-            ref=ref_name,
-            channel=input_shape[1],
-            height=input_shape[2],
-            width=input_shape[3],
-            channel_last=True,
-        )
-    if len(input_shape) in (2, 1):
-        return dict(
-            ref=ref_name,
-            channel=input_shape[-1],
-            height=1,
-            width=1,
-            channel_last=True,
-        )
-    if len(input_shape) == 3:
-        return dict(
-            ref=ref_name,
-            channel=input_shape[0],
-            height=input_shape[1],
-            width=input_shape[2],
-            channel_last=True,
-        )
-    return dict(ref=ref_name, shape=input_shape)
+    values = [int(x) for x in shape]
+    info: dict[str, Any] = {}
+    if ref is not None:
+        info["ref"] = ref
+
+    if len(values) == 4:
+        info.update(channel=values[1], height=values[2], width=values[3], channel_last=True)
+    elif len(values) == 3:
+        info.update(channel=values[0], height=values[1], width=values[2], channel_last=True)
+    elif len(values) in (1, 2):
+        info.update(channel=values[-1], height=1, width=1, channel_last=True)
+    else:
+        info["shape"] = values
+    return info
 
 
-def get_output_info(out_shape: List[int]) -> List[dict[str, Any]]:
-    """
-    Build IR output spec list (one element per output; single output = one dict).
-    """
-    if len(out_shape) == 4:
-        return [dict(channel=out_shape[1], height=out_shape[2], width=out_shape[3], channel_last=True)]
-    if len(out_shape) == 2:
-        return [dict(channel=out_shape[1], height=1, width=1, channel_last=True)]
-    if len(out_shape) == 1:
-        return [dict(channel=out_shape[0], height=1, width=1, channel_last=True)]
-    if len(out_shape) == 3:
-        return [dict(channel=out_shape[0], height=out_shape[1], width=out_shape[2], channel_last=True)]
-    return [dict(shape=out_shape)]
+def get_input_info(input_shape: Sequence[int], ref_name: str) -> dict[str, Any]:
+    """Build one IR input spec for a tensor consumed from `ref_name`."""
+    return tensor_info_from_shape(input_shape, ref=ref_name)
+
+
+def get_output_info(out_shape: Sequence[int]) -> List[dict[str, Any]]:
+    """Build the single-output IR spec list used by layer constructors."""
+    return [tensor_info_from_shape(out_shape)]
 
 
 def get_weight_info(
     weight_shape: tuple | list,
     bias_shape: Optional[tuple | list] = None,
 ) -> dict[str, Any]:
-    """
-    Build IR weights spec: weight (and optionally bias) shape dicts.
-    """
+    """Build IR weight specs for a required weight and optional bias."""
     out: dict[str, Any] = {"weight": {"shape": list(weight_shape)}}
     if bias_shape is not None:
         out["bias"] = {"shape": list(bias_shape)}
