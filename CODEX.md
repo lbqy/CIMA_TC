@@ -10,3 +10,19 @@
 5. After completing and verifying a coherent module or milestone, manage progress with Git. Commit meaningful changes with a clear message, and report what changed, why, which tests were run, and any known limitations.
 
 # Environments
+1. conda activate CIMA_TC
+
+2. Required packages/tools for pytest and `CIMA_TC/Compiler/test` examples:
+   - `pytest`
+   - `torch`
+   - `numpy`
+   - `onnx`
+   - `onnxscript`
+   - `onnxruntime`
+   - `graphviz` Python package
+   - Graphviz system binary `dot`
+
+3. If the environment is missing ONNX/Graphviz support, install them with:
+   ```bash
+   conda install -n CIMA_TC -y -c conda-forge onnx onnxscript onnxruntime graphviz python-graphviz
+   ```

@@ -25,6 +25,132 @@ def _shape_tuple(x) -> tuple:
         return tuple[Any, ...]()
 
 
+def _max_mean_abs(a: Any, b: Any) -> tuple[float, float]:
+    import numpy as np
+
+    diff = np.abs(a - b)
+    return float(diff.max()), float(diff.mean())
+
+
+def _assert_outputs_close(name: str, expected: Any, actual: Any, *, atol: float = 1e-4, rtol: float = 1e-4) -> None:
+    import numpy as np
+
+    if expected.shape != actual.shape:
+        raise AssertionError(f"{name} shape mismatch: expected {expected.shape}, got {actual.shape}")
+    try:
+        np.testing.assert_allclose(actual, expected, atol=atol, rtol=rtol)
+    except AssertionError as exc:
+        max_abs, mean_abs = _max_mean_abs(expected, actual)
+        raise AssertionError(f"{name} mismatch: max_abs={max_abs:.6g}, mean_abs={mean_abs:.6g}") from exc
+
+
+def _make_inference_onnx(src: str, dst: str) -> None:
+    """Write an inference-mode ONNX copy by pruning BatchNormalization training outputs."""
+    try:
+        import onnx
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("onnx package is required for split equivalence verification") from exc
+
+    model = onnx.load(src)
+    changed = False
+    for node in model.graph.node:
+        if node.op_type == "BatchNormalization" and len(node.output) > 1:
+            del node.output[1:]
+            changed = True
+    if changed:
+        onnx.save(model, dst)
+    else:
+        onnx.save(model, dst)
+
+
+def _run_onnx(onnx_path: str, x_np: Any) -> Any:
+    try:
+        import onnxruntime as ort
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("onnxruntime is required for split equivalence verification") from exc
+
+    session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+    input_name = session.get_inputs()[0].name
+    return session.run(None, {input_name: x_np})[0]
+
+
+def _random_input_for_onnx(onnx_path: str, *, seed: int = 0) -> Any:
+    import numpy as np
+    import onnxruntime as ort
+
+    session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+    shape = []
+    for dim in session.get_inputs()[0].shape:
+        shape.append(1 if not isinstance(dim, int) else dim)
+    rng = np.random.default_rng(seed)
+    return rng.standard_normal(tuple(shape), dtype=np.float32)
+
+
+def _load_generated_split_model(model_py: str, weights_pt: str) -> Any:
+    import importlib.util
+    import torch
+
+    spec = importlib.util.spec_from_file_location("resnet50_split_generated_equivalence", model_py)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot import generated model script: {model_py}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    model = module.ResNet50SplitIR()
+    weights = torch.load(weights_pt, map_location="cpu")
+    missing, unexpected = model.load_state_dict(weights, strict=False)
+    if missing or unexpected:
+        raise AssertionError(
+            f"Generated split model state_dict mismatch: missing={missing[:10]}, unexpected={unexpected[:10]}"
+        )
+    return model
+
+
+def _verify_split_equivalence(
+    *,
+    original_onnx: str,
+    generated_model_py: str,
+    split_weights_pt: str,
+    reference_onnx: str,
+    split_onnx: str,
+) -> None:
+    """Compare original inference ONNX, split ONNX, and generated PyTorch outputs."""
+    import torch
+
+    _make_inference_onnx(original_onnx, reference_onnx)
+    x_np = _random_input_for_onnx(reference_onnx, seed=0)
+
+    y_original = _run_onnx(reference_onnx, x_np)
+
+    model = _load_generated_split_model(generated_model_py, split_weights_pt)
+    model.eval()
+    with torch.no_grad():
+        y_torch = model(torch.from_numpy(x_np)).detach().cpu().numpy()
+
+    torch.onnx.export(
+        model,
+        torch.from_numpy(x_np),
+        split_onnx,
+        input_names=["input"],
+        output_names=["output"],
+        opset_version=18,
+        do_constant_folding=True,
+    )
+    y_split_onnx = _run_onnx(split_onnx, x_np)
+
+    _assert_outputs_close("original ONNX vs generated split PyTorch", y_original, y_torch)
+    _assert_outputs_close("generated split PyTorch vs split ONNX", y_torch, y_split_onnx)
+    _assert_outputs_close("original ONNX vs split ONNX", y_original, y_split_onnx)
+
+    pt_max, pt_mean = _max_mean_abs(y_original, y_torch)
+    onnx_max, onnx_mean = _max_mean_abs(y_original, y_split_onnx)
+    print(
+        "Split equivalence OK "
+        f"(PyTorch max={pt_max:.3g}, mean={pt_mean:.3g}; "
+        f"ONNX max={onnx_max:.3g}, mean={onnx_mean:.3g})"
+    )
+
+
 def main() -> None:
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -65,11 +191,28 @@ def main() -> None:
     assert os.path.isfile(split_ir_out), f"Missing split IR output: {split_ir_out}"
     assert os.path.isfile(split_weights_pt), f"Missing split weights output: {split_weights_pt}"
 
-    # 3) Verify: split IR contains at least one Concat_0_* or *_0_*
+    # 3) Verify: split IR uses topology-renamed layers and contains split/merge ops.
     split_ir = BaseIR.load_ir(file=split_ir_out)
-    layer_names = list[str]((split_ir.layers or {}).keys())
-    has_split = any(n.startswith("Concat_0_") or "_0_" in n for n in layer_names)
-    assert has_split, "Split IR does not seem to contain split layers (Concat_0_* or *_0_*)"
+    layers = split_ir.layers or {}
+    layer_names = list[str](layers.keys())
+    def has_legacy_grid_suffix(name: str) -> bool:
+        parts = name.rsplit("_", 2)
+        return len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit()
+
+    legacy_split_names = [
+        n
+        for n in layer_names
+        if n.startswith(("Concat_0_", "Split_0_"))
+        or has_legacy_grid_suffix(n)
+        or (n.startswith("Add_") and len(n.split("_")) > 2)
+    ]
+    assert not legacy_split_names, f"Split IR still contains legacy split names: {legacy_split_names[:10]}"
+    split_or_merge_ops = [
+        n
+        for n, layer in layers.items()
+        if getattr(getattr(layer, "op", None), "op_id", None) in ("split", "concat", "add")
+    ]
+    assert split_or_merge_ops, "Split IR does not contain split/merge ops"
 
     # 3.5) Visualize: export DOT + PDF
     dot_out = os.path.join(script_dir, "ResNet50_split_graph.dot")
@@ -128,6 +271,16 @@ def main() -> None:
 
     assert not missing, f"Missing split weight tensors: {missing[:10]} (total {len(missing)})"
     assert not bad_shape, f"Split weight shape mismatches: {bad_shape[:5]} (total {len(bad_shape)})"
+
+    reference_onnx = os.path.join(script_dir, "ResNet50_inference.onnx")
+    split_onnx = os.path.join(script_dir, "ResNet50_split.onnx")
+    _verify_split_equivalence(
+        original_onnx=onnx_path,
+        generated_model_py=model_py,
+        split_weights_pt=split_weights_pt,
+        reference_onnx=reference_onnx,
+        split_onnx=split_onnx,
+    )
 
     print("ResNet50 split export verification OK")
 

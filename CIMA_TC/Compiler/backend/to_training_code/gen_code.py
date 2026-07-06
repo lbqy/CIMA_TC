@@ -184,7 +184,7 @@ def gen_pytorch_model_script(
             fwd_lines.append(f"{out_vars[0]} = torch.cat([{', '.join(in_vars)}], dim={axis})")
 
         elif op_id == "add":
-            fwd_lines.append(f"{out_vars[0]} = {in_vars[0]} + {in_vars[1]}")
+            fwd_lines.append(f"{out_vars[0]} = torch.add({in_vars[0]}, {in_vars[1]})")
 
         elif op_id == "mul":
             fwd_lines.append(f"{out_vars[0]} = {in_vars[0]} * {in_vars[1]}")

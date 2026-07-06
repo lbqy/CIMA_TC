@@ -5,9 +5,10 @@ BaseIR can be loaded/saved from JSON and holds both the layer graph and device h
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union
 
-from .jsonable import Jsonable, load_json, dump_json, to_json_obj as _to_json_obj
+from .jsonable import Jsonable, SerializationConfig, load_json, dump_json, to_json_obj as _to_json_obj
 from .type_utils import to_typed_object
 from .layer import GraphLayer
 from .device import DeviceTree
@@ -100,7 +101,7 @@ class BaseIR(GraphLayer, DeviceTree, Jsonable):
 
 def save_ir(ir: BaseIR, *, file: Optional[Any] = None, **kwargs: Any) -> Optional[str]:
     """
-    Serialize IR to JSON string or file.
+    Serialize IR to JSON/YAML string or file.
 
     Args:
         ir: BaseIR instance to serialize.
@@ -108,9 +109,17 @@ def save_ir(ir: BaseIR, *, file: Optional[Any] = None, **kwargs: Any) -> Optiona
         **kwargs: Passed to dump_json (e.g. config, encoding).
 
     Returns:
-        JSON string if file is None, else None.
+        Serialized string if file is None, else None.
     """
+    if "config" not in kwargs and _is_yaml_file(file):
+        kwargs["config"] = SerializationConfig(default_flow_style=False)
     return dump_json(ir, file=file, **kwargs)
+
+
+def _is_yaml_file(file: Optional[Any]) -> bool:
+    if not isinstance(file, (str, Path)):
+        return False
+    return Path(file).suffix.lower() in {".yaml", ".yml"}
 
 
 # Backward compatibility: save_ir as alias for dump_json when used as (obj, file=...)

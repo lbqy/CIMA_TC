@@ -221,6 +221,148 @@ def _get_bn_param_array(
     return None
 
 
+OP_NAME_PREFIXES: Dict[str, str] = {
+    "conv1d": "Conv",
+    "conv2d": "Conv",
+    "conv3d": "Conv",
+    "linear": "Gemm",
+    "batch_norm": "BatchNorm",
+    "batch_norm1d": "BatchNorm",
+    "batch_norm2d": "BatchNorm",
+    "batch_norm3d": "BatchNorm",
+    "relu": "Relu",
+    "max_pool2d": "MaxPool",
+    "avg_pool2d": "AveragePool",
+    "global_avg_pool2d": "GlobalAveragePool",
+    "flatten": "Flatten",
+    "split": "Split",
+    "concat": "Concat",
+    "add": "Add",
+    "mul": "Mul",
+    "sigmoid": "Sigmoid",
+    "silu": "Silu",
+}
+
+
+def _op_name_prefix(layer: BaseLayer) -> str:
+    op = getattr(layer, "op", None)
+    op_id = getattr(op, "op_id", "") if op is not None else ""
+    if op_id in OP_NAME_PREFIXES:
+        return OP_NAME_PREFIXES[op_id]
+    if op_id:
+        return "".join(part[:1].upper() + part[1:] for part in op_id.split("_") if part)
+    layer_type = getattr(layer, "type", "layer") or "layer"
+    return layer_type[:1].upper() + layer_type[1:]
+
+
+def _rewrite_ref_name(ref: Ref, name_map: Dict[str, str]) -> str:
+    if not ref.segments:
+        return str(ref)
+    first = ref.segments[0]
+    new_name = name_map.get(first.name, first.name)
+    new_first = f"{new_name}:{first.index}" if first.index is not None else new_name
+    rest = ".".join(str(seg) for seg in ref.segments[1:])
+    return f"{new_first}.{rest}" if rest else new_first
+
+
+def _rewrite_layer_refs(layers: Dict[str, BaseLayer], name_map: Dict[str, str]) -> None:
+    for layer in layers.values():
+        for field in ("inputs", "outputs"):
+            defs = getattr(layer, field, None) or []
+            for dd in defs:
+                if dd.ref is None or not dd.ref.segments:
+                    continue
+                if dd.ref.segments[0].name in name_map:
+                    dd.set_ref(_rewrite_ref_name(dd.ref, name_map))
+
+
+def _rename_param_keys(params: Dict[str, Any], name_map: Dict[str, str]) -> Dict[str, Any]:
+    renamed: Dict[str, Any] = {}
+    for key, value in params.items():
+        if "." not in key:
+            renamed[key] = value
+            continue
+        layer_name, suffix = key.rsplit(".", 1)
+        renamed[f"{name_map.get(layer_name, layer_name)}.{suffix}"] = value
+    return renamed
+
+
+BN_OP_IDS = {"batch_norm", "batch_norm1d", "batch_norm2d", "batch_norm3d"}
+
+
+def _is_bn_layer(layer: BaseLayer) -> bool:
+    op = getattr(layer, "op", None)
+    return getattr(op, "op_id", None) in BN_OP_IDS
+
+
+def _first_input_layer_name(layer: BaseLayer) -> Optional[str]:
+    inputs = getattr(layer, "inputs", None) or []
+    if not inputs or inputs[0].ref is None or not inputs[0].ref.segments:
+        return None
+    return inputs[0].ref.segments[0].name
+
+
+def _rename_split_graph(
+    split_ir: BaseIR,
+    split_weights: Dict[str, Any],
+    split_bn_params: Dict[str, Any],
+) -> None:
+    layers = split_ir.layers or {}
+    topo = split_ir.topological_order()
+    if len(topo) != len(layers):
+        raise ValueError("Cannot rename split graph because topological order is incomplete")
+
+    name_map: Dict[str, str] = {}
+    prefix_counts: Dict[str, int] = {}
+    used_names: set[str] = set()
+
+    def unique_name(base: str) -> str:
+        if base not in used_names:
+            used_names.add(base)
+            return base
+        index = 1
+        while f"{base}_{index}" in used_names:
+            index += 1
+        name = f"{base}_{index}"
+        used_names.add(name)
+        return name
+
+    def next_numbered_name(prefix: str) -> str:
+        index = prefix_counts.get(prefix, 0)
+        prefix_counts[prefix] = index + 1
+        return unique_name(f"{prefix}_{index}")
+
+    for old_name in topo:
+        layer = layers[old_name]
+        layer_type = getattr(layer, "type", None)
+        if old_name == "graph_input":
+            new_name = unique_name("graph_input")
+        elif old_name == "graph_output":
+            new_name = unique_name("graph_output")
+        elif layer_type == "input":
+            new_name = next_numbered_name("Input")
+        elif layer_type == "output":
+            new_name = next_numbered_name("Output")
+        elif _is_bn_layer(layer):
+            producer = _first_input_layer_name(layer)
+            producer_name = name_map.get(producer, producer) if producer else None
+            new_name = unique_name(f"{producer_name}_bn") if producer_name else next_numbered_name("BatchNorm")
+        else:
+            new_name = next_numbered_name(_op_name_prefix(layer))
+        name_map[old_name] = new_name
+
+    _rewrite_layer_refs(layers, name_map)
+    split_ir.layers = {name_map[name]: layers[name] for name in topo}
+
+    renamed_weights = _rename_param_keys(split_weights, name_map)
+    split_weights.clear()
+    split_weights.update(renamed_weights)
+
+    renamed_bn = _rename_param_keys(split_bn_params, name_map)
+    split_bn_params.clear()
+    split_bn_params.update(renamed_bn)
+
+
 def split_model_for_xb(
     ir: BaseIR,
     xb: XBConfig,
@@ -528,12 +670,6 @@ def split_model_for_xb(
                     v = _get_bn_param_array(weight_store=weight_store, bn_store=bn_store, key=k)
                     if v is not None:
                         split_bn_params[k] = v
-            else:
-                for suffix in ("weight", "bias", "running_mean", "running_var"):
-                    k = f"{name}.{suffix}"
-                    v = _get_bn_param_array(weight_store=weight_store, bn_store=bn_store, key=k)
-                    if v is not None:
-                        split_bn_params[k] = v
 
         # 4) For each column j: build Add tree over row parts -> Add_j_name
         add_names: List[str] = []
@@ -617,10 +753,7 @@ def split_model_for_xb(
         layers.pop(name, None)
 
     split_ir.layers = layers
-    # Reorder layers by topological order so serialized IR has a well-defined execution order
-    topo_order = split_ir.topological_order()
-    if len(topo_order) == len(split_ir.layers):
-        split_ir.layers = {n: split_ir.layers[n] for n in topo_order}
+    _rename_split_graph(split_ir, split_weights, split_bn_params)
     return SplitResult(ir=split_ir, weights=split_weights, bn_params=split_bn_params)
 
 
